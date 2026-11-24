@@ -1,0 +1,177 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.DialogOverlayView"
+             x:DataType="svc:DialogViewModel">
+
+  <Border Classes="rem-modal"
+          Width="490"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,Auto">
+
+      <!-- Header -->
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="20,18,16,0">
+        <Grid Width="34" Height="34" VerticalAlignment="Center">
+          <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{DynamicResource DangerBgBrush}"
+                  IsVisible="{Binding IsError}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Foreground="{DynamicResource DangerFgBrush}"
+                      Width="17" Height="17" />
+          </Border>
+
+          <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{DynamicResource StatusPausedBgBrush}"
+                  IsVisible="{Binding IsWarning}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Foreground="{DynamicResource StatusPausedFgBrush}"
+                      Width="17" Height="17" />
+          </Border>
+
+          <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{DynamicResource StatusPausedBgBrush}"
+                  IsVisible="{Binding IsConfirm}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Foreground="{DynamicResource StatusPausedFgBrush}"
+                      Width="17" Height="17" />
+          </Border>
+
+          <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{DynamicResource SurfaceAltBrush}"
+                  IsVisible="{Binding IsInfo}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Foreground="{DynamicResource PrimaryAccentBrush}"
+                      Width="17" Height="17" />
+          </Border>
+        </Grid>
+
+        <TextBlock Grid.Column="1"
+                   Text="{Binding Title}"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Margin="12,0,10,0"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap" />
+
+        <Button Grid.Column="2"
+                Classes="rem-icon"
+                Command="{Binding DismissCommand}"
+                VerticalAlignment="Top"
+                ZIndex="2">
+          <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="14" Height="14" />
+        </Button>
+      </Grid>
+
+      <!-- Message & Optional Details + Right-leaning Rem above Error Box / Footer Line -->
+      <Grid Grid.Row="1" RowDefinitions="Auto,Auto">
+        <Grid Grid.Row="0" Margin="20,12,20,0" ZIndex="0">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding Message}"
+                       FontSize="13"
+                       TextWrapping="Wrap" />
+            <Border Grid.Column="1"
+                    Width="82"
+                    IsVisible="{Binding ShowTopRightErrorRem}" />
+          </Grid>
+
+          <!-- For Error dialogs, Rem peeks on the top-right right above the error box (or footer divider) -->
+          <Image Source="{Binding RemArtBitmap}"
+                 Height="74"
+                 Stretch="Uniform"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Bottom"
+                 Margin="0,-24,4,-12"
+                 IsHitTestVisible="False"
+                 IsVisible="{Binding ShowTopRightErrorRem}" />
+
+          <!-- For Info dialogs, Rem leans on the right above the footer divider line -->
+          <Image Source="{Binding RemArtBitmap}"
+                 Height="68"
+                 Stretch="Uniform"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Bottom"
+                 Margin="0,0,4,-12"
+                 IsHitTestVisible="False"
+                 IsVisible="{Binding ShowRightInfoRem}" />
+        </Grid>
+
+        <!-- Error/Warning/Info Details Box (ZIndex 1 with opaque surface so Error Rem emerges behind its top border) -->
+        <Border Grid.Row="1"
+                ZIndex="1"
+                Margin="20,0,20,12"
+                Background="{DynamicResource SurfaceAltBrush}"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Padding="10,8"
+                IsVisible="{Binding HasDetails}">
+          <TextBlock Text="{Binding Details}"
+                     Classes="muted"
+                     FontSize="11"
+                     TextWrapping="Wrap" />
+        </Border>
+      </Grid>
+
+      <!-- Footer (ZIndex 1 with 1px top border so Info Rem leans cleanly behind it) -->
+      <Border Grid.Row="2"
+              ZIndex="1"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,1,0,0"
+              MinHeight="58">
+        <Grid ColumnDefinitions="Auto,*">
+          <Image Grid.Column="0"
+                 Source="{Binding RemArtBitmap}"
+                 MaxHeight="88"
+                 MaxWidth="104"
+                 Stretch="Uniform"
+                 Margin="10,2,0,0"
+                 VerticalAlignment="Bottom"
+                 HorizontalAlignment="Left"
+                 IsVisible="{Binding ShowLeftFooterRem}" />
+
+          <ItemsControl Grid.Column="1"
+                        ItemsSource="{Binding Buttons}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Margin="14,12,20,14">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="8" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="svc:DialogButtonViewModel">
+                <Grid>
+                  <Button Classes="rem-primary"
+                          Command="{Binding SelectCommand}"
+                          Content="{Binding Label}"
+                          MinWidth="86"
+                          Height="34"
+                          IsVisible="{Binding IsPrimary}" />
+
+                  <Button Classes="rem-danger"
+                          Command="{Binding SelectCommand}"
+                          Content="{Binding Label}"
+                          MinWidth="86"
+                          Height="34"
+                          FontSize="13"
+                          IsVisible="{Binding IsDanger}" />
+
+                  <Button Classes="rem-btn"
+                          Command="{Binding SelectCommand}"
+                          Content="{Binding Label}"
+                          MinWidth="86"
+                          Height="34"
+                          IsVisible="{Binding IsDefaultStyle}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>
+

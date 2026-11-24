@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.db
+*.db-shm
+*.db-wal
+*.log
+REM/Tools/yt-dlp.exe
+yt-dlp.exe
+REM/Tools/go-librespot.exe
+go-librespot.exe
+REM/Tools/soloist.exe
+soloist.exe
+REM/Tools/*.exe
+REM/Tools/*.dll

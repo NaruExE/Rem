@@ -1,0 +1,759 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:models="using:REM.Models"
+             xmlns:svc="using:REM.Services"
+             xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+             x:Class="REM.Views.VideoPlayerView"
+             x:DataType="vm:VideoPlayerViewModel"
+             Focusable="True">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Background="{DynamicResource AppBackgroundBrush}">
+
+    <!-- Hideable Top Module Status & Controls Bar -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding ShowModuleHeader}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="34" Height="34"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{Binding AccentBrush}">
+          <PathIcon Data="{Binding IconGeometry}"
+                    Width="16" Height="16"
+                    Foreground="#FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+              <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+            </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}" ToolTip.Tip="Detach video &amp; keep audio running in background">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              <TextBlock Text="Headless" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+              <TextBlock Text="Pause" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-danger" Command="{Binding KillCommand}" ToolTip.Tip="Save resume timestamp, stop &amp; free LibVLC RAM">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+              <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+              <TextBlock Text="Hub" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Top Input Bar (Hidden in Fullscreen) -->
+    <Border Grid.Row="1"
+            IsVisible="{Binding !IsFullscreen}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="16,10">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto">
+          <TextBox Grid.Column="0"
+                   Classes="rem"
+                   Watermark="Paste video URL (.m3u8, .mp4, YouTube, Twitch VOD) or local file path..."
+                   Text="{Binding MediaInputText}"
+                   Margin="0,0,8,0">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding PlayInputCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+
+          <Button Grid.Column="1"
+                  Classes="rem-primary"
+                  Command="{Binding PlayInputCommand}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Padding="14,8"
+                  Margin="0,0,6,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="12" Height="12" />
+              <TextBlock Text="Play" Foreground="{DynamicResource TextOnAccentBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Grid.Column="2"
+                  Classes="rem-soft"
+                  Command="{Binding AddInputToPlaylistCommand}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Margin="0,0,6,0"
+                  ToolTip.Tip="Save URL or file into selected playlist">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="12" Height="12" />
+              <TextBlock Text="Add to Playlist" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Grid.Column="3"
+                  Classes="rem-soft"
+                  Command="{Binding OpenLocalFileCommand}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Margin="0,0,6,0"
+                  ToolTip.Tip="Browse local .mp4 / .mkv / .webm / .avi file">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Folder}" Width="13" Height="13" />
+              <TextBlock Text="Open File" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Grid.Column="4"
+                  Classes="sidebar-tab"
+                  Classes.active="{Binding HasRefererOrVisible}"
+                  Command="{Binding ToggleRefererCommand}"
+                  Padding="9,8"
+                  Margin="0,0,4,0"
+                  ToolTip.Tip="Toggle optional Referer URL header (for protected .m3u8 streams)">
+            <PathIcon Data="{x:Static svc:IconCatalog.Link}" Width="14" Height="14" />
+          </Button>
+
+          <Button Grid.Column="5"
+                  Classes="sidebar-tab"
+                  Classes.active="{Binding IsPlaylistSidebarOpen}"
+                  Command="{Binding TogglePlaylistSidebarCommand}"
+                  Padding="9,8"
+                  ToolTip.Tip="Toggle Playlist Sidebar">
+            <PathIcon Data="{x:Static svc:IconCatalog.QueueList}" Width="15" Height="15" />
+          </Button>
+        </Grid>
+
+        <!-- Collapsible Optional Referer Input -->
+        <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsRefererVisible}">
+          <TextBlock Grid.Column="0"
+                     Text="Referer:"
+                     Classes="muted"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Margin="2,0,10,0" />
+          <TextBox Grid.Column="1"
+                   Classes="rem"
+                   Watermark="Optional HTTP Referer header (e.g. https://streaming-site.example/)"
+                   Text="{Binding RefererInputText}"
+                   Padding="10,7"
+                   FontSize="12">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding PlayInputCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- Main Stage: Dedicated VideoView (Left/Center, ZERO Overlays) + Collapsible Playlist Sidebar (Right) -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+
+      <!-- CRITICAL: Dedicated native VideoView host with NO overlaid XAML controls -->
+      <Border Grid.Column="0" Background="#000000" ClipToBounds="True">
+        <vlc:VideoView x:Name="VlcVideoView"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Stretch" />
+      </Border>
+
+      <!-- Collapsible Right Playlist Sidebar -->
+      <Border Grid.Column="1"
+              Width="296"
+              IsVisible="{Binding ShowPlaylistSidebar}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*">
+
+          <!-- Playlist Picker + Actions Header -->
+          <StackPanel Grid.Row="0" Spacing="8" Margin="14,12,14,10">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBlock Grid.Column="0"
+                         Text="Playlists"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="1"
+                      Classes="rem-icon"
+                      Command="{Binding ToggleCreatePlaylistCommand}"
+                      Margin="0,0,2,0"
+                      ToolTip.Tip="Create new playlist">
+                <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="13" Height="13" />
+              </Button>
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
+                      Command="{Binding DeleteSelectedPlaylistCommand}"
+                      IsEnabled="{Binding HasPlaylists}"
+                      ToolTip.Tip="Delete selected playlist">
+                <PathIcon Data="{x:Static svc:IconCatalog.Trash}" Width="13" Height="13" />
+              </Button>
+            </Grid>
+
+            <!-- Inline Create Playlist Box -->
+            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsCreatingPlaylist}">
+              <TextBox Grid.Column="0"
+                       Classes="rem"
+                       Watermark="New playlist name..."
+                       Text="{Binding NewPlaylistName}"
+                       Padding="9,6"
+                       FontSize="12"
+                       Margin="0,0,6,0">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding CreatePlaylistCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Grid.Column="1"
+                      Classes="rem-primary"
+                      Command="{Binding CreatePlaylistCommand}"
+                      Content="Add"
+                      Padding="10,6"
+                      FontSize="12" />
+            </Grid>
+
+            <ComboBox Classes="rem"
+                      HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding Playlists}"
+                      SelectedItem="{Binding SelectedPlaylist}"
+                      IsVisible="{Binding HasPlaylists}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="models:VideoPlaylist">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,2,0,0" />
+          </StackPanel>
+
+          <!-- Playlist Items List -->
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="6" Margin="12,4,12,14">
+              <TextBlock Text="No playlists yet. Click + above or 'Add to Playlist' to start a watchlist with auto-resume."
+                         Classes="muted"
+                         FontSize="12"
+                         TextWrapping="Wrap"
+                         Margin="4,8"
+                         IsVisible="{Binding !HasPlaylists}" />
+
+              <StackPanel Spacing="4" Margin="4,8" IsVisible="{Binding HasPlaylists}">
+                <TextBlock Text="This playlist is empty. Paste a link or open a file above and click 'Add to Playlist'."
+                           Classes="muted"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding !HasPlaylistItems}" />
+              </StackPanel>
+
+              <ItemsControl ItemsSource="{Binding PlaylistItems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:VideoPlaylistItemRowViewModel">
+                    <Border Classes="rem-card"
+                            Classes.selected="{Binding IsPlaying}"
+                            Padding="10,8"
+                            Margin="0,0,0,6">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <Button Grid.Column="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Command="{Binding PlayCommand}"
+                                Cursor="Hand"
+                                ToolTip.Tip="{Binding SourceUrl}">
+                          <StackPanel Spacing="4" Margin="0,0,6,0">
+                            <Grid ColumnDefinitions="Auto,*">
+                              <TextBlock Grid.Column="0"
+                                         Text="{Binding DisplayIndex, StringFormat='{}{0}.'}"
+                                         Classes="muted"
+                                         FontSize="11"
+                                         FontWeight="SemiBold"
+                                         Margin="0,0,6,0"
+                                         VerticalAlignment="Top" />
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding Title}"
+                                         FontSize="12"
+                                         FontWeight="SemiBold"
+                                         TextTrimming="CharacterEllipsis"
+                                         MaxLines="2"
+                                         TextWrapping="Wrap" />
+                            </Grid>
+
+                            <StackPanel Spacing="3" IsVisible="{Binding HasProgress}">
+                              <ProgressBar Minimum="0"
+                                           Maximum="100"
+                                           Value="{Binding ProgressPercent}"
+                                           Height="3"
+                                           CornerRadius="2"
+                                           Foreground="#FF8800"
+                                           Background="{DynamicResource BorderSoftBrush}" />
+                              <TextBlock Text="{Binding ProgressText}"
+                                         Classes="muted"
+                                         FontSize="10" />
+                            </StackPanel>
+                          </StackPanel>
+                        </Button>
+
+                        <StackPanel Grid.Column="1" Orientation="Vertical" Spacing="2" VerticalAlignment="Center">
+                          <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Classes="rem-icon"
+                                    Command="{Binding MoveUpCommand}"
+                                    IsEnabled="{Binding CanMoveUp}"
+                                    Padding="4"
+                                    ToolTip.Tip="Move Up">
+                              <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="11" Height="11" />
+                            </Button>
+                            <Button Classes="rem-icon"
+                                    Command="{Binding MoveDownCommand}"
+                                    IsEnabled="{Binding CanMoveDown}"
+                                    Padding="4"
+                                    ToolTip.Tip="Move Down">
+                              <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="11" Height="11" />
+                            </Button>
+                          </StackPanel>
+                          <Button Classes="rem-icon"
+                                  Command="{Binding RemoveCommand}"
+                                  Padding="4"
+                                  HorizontalAlignment="Right"
+                                  ToolTip.Tip="Remove from playlist">
+                            <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="11" Height="11" />
+                          </Button>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Bottom Control Bar (Strictly BELOW VideoView — zero overlap, auto-hides after idle) -->
+    <Border x:Name="BottomControlBar"
+            Grid.Row="3"
+            IsVisible="{Binding IsControlsVisible}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="16,10,16,12">
+      <StackPanel Spacing="7">
+
+        <!-- Optional External Subtitle URL Row -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" IsVisible="{Binding IsSubtitleUrlOpen}">
+          <TextBlock Grid.Column="0"
+                     Text="Subtitle URL:"
+                     Classes="muted"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0" />
+          <TextBox Grid.Column="1"
+                   Classes="rem"
+                   Watermark="Paste .srt / .ass / .vtt subtitle URL..."
+                   Text="{Binding SubtitleUrlInput}"
+                   Padding="10,6"
+                   FontSize="12"
+                   Margin="0,0,6,0">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding LoadSubtitleUrlCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <Button Grid.Column="2"
+                  Classes="rem-primary"
+                  Command="{Binding LoadSubtitleUrlCommand}"
+                  Content="Load Sub URL"
+                  Padding="12,6"
+                  FontSize="12"
+                  Margin="0,0,4,0" />
+          <Button Grid.Column="3"
+                  Classes="rem-icon"
+                  Command="{Binding ToggleSubtitleUrlCommand}"
+                  ToolTip.Tip="Close">
+            <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="12" Height="12" />
+          </Button>
+        </Grid>
+
+        <!-- Now Playing Title + VLC Tools (A-B, Aspect, Frame, Snapshot) + Buffering / Toast Status -->
+        <Grid ColumnDefinitions="*,Auto,Auto">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding CurrentTitle}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0" />
+
+          <StackPanel Grid.Column="1"
+                      Orientation="Horizontal"
+                      Spacing="4"
+                      VerticalAlignment="Center"
+                      Margin="0,0,8,0">
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsAbLoopActive}"
+                    Command="{Binding CycleAbLoopCommand}"
+                    IsEnabled="{Binding HasMedia}"
+                    Content="{Binding AbLoopButtonText}"
+                    Padding="7,3"
+                    FontSize="10"
+                    FontWeight="SemiBold"
+                    ToolTip.Tip="{Binding AbLoopTooltip}" />
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsCustomAspectRatio}"
+                    Command="{Binding CycleAspectRatioCommand}"
+                    Content="{Binding AspectRatioLabel}"
+                    Padding="7,3"
+                    FontSize="10"
+                    FontWeight="SemiBold"
+                    ToolTip.Tip="Cycle Video Aspect Ratio (A)" />
+
+            <Button Classes="rem-soft"
+                    Command="{Binding FrameStepCommand}"
+                    IsEnabled="{Binding HasMedia}"
+                    Content="+1f"
+                    Padding="7,3"
+                    FontSize="10"
+                    ToolTip.Tip="Step Next Frame (E)" />
+
+            <Button Classes="rem-icon"
+                    Command="{Binding TakeSnapshotCommand}"
+                    IsEnabled="{Binding HasMedia}"
+                    Padding="5"
+                    ToolTip.Tip="Save PNG Snapshot to Pictures\REM Snapshots (Shift+S)">
+              <PathIcon Data="{x:Static svc:IconCatalog.Image}" Width="13" Height="13" />
+            </Button>
+          </StackPanel>
+
+          <Border Grid.Column="2"
+                  IsVisible="{Binding HasStatusBanner}"
+                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{DynamicResource SurfaceAltBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="1"
+                  Padding="8,3"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding StatusBannerText}"
+                       Classes="muted"
+                       FontSize="11"
+                       FontWeight="SemiBold" />
+          </Border>
+        </Grid>
+
+        <!-- Seek Bar + Timestamps -->
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding PositionDisplay}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0" />
+          <Slider Grid.Column="1"
+                  x:Name="SeekSlider"
+                  Minimum="0"
+                  Maximum="{Binding SeekMaxSeconds}"
+                  Value="{Binding SeekPositionSeconds, Mode=TwoWay}"
+                  IsEnabled="{Binding HasMedia}"
+                  VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2"
+                     Text="{Binding DurationDisplay}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="10,0,0,0" />
+        </Grid>
+
+        <!-- Transport, Audio/Subtitle Tracks, External Subs, Speed, Fullscreen, Headless & Kill -->
+        <Grid ColumnDefinitions="Auto,*,Auto">
+
+          <!-- Left: Shuffle, Prev, Play/Pause, Next, Loop, Mute, Volume -->
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Button Classes="rem-icon"
+                    Command="{Binding ToggleShuffleCommand}"
+                    ToolTip.Tip="{Binding ShuffleTooltip}">
+              <Grid>
+                <PathIcon Data="{x:Static svc:IconCatalog.Shuffle}"
+                          Foreground="{DynamicResource PrimaryAccentBrush}"
+                          Width="14" Height="14"
+                          IsVisible="{Binding IsShuffled}" />
+                <PathIcon Data="{x:Static svc:IconCatalog.Shuffle}"
+                          Width="14" Height="14"
+                          Opacity="0.6"
+                          IsVisible="{Binding !IsShuffled}" />
+              </Grid>
+            </Button>
+
+            <Button Classes="rem-icon"
+                    Command="{Binding PrevItemCommand}"
+                    IsEnabled="{Binding CanGoPrev}"
+                    ToolTip.Tip="Previous Playlist Item">
+              <PathIcon Data="{x:Static svc:IconCatalog.SkipPrev}" Width="15" Height="15" />
+            </Button>
+
+            <Button Classes="rem-primary"
+                    Command="{Binding TogglePlayPauseCommand}"
+                    Width="38" Height="36"
+                    CornerRadius="999"
+                    Padding="0"
+                    ToolTip.Tip="Play / Pause (Space)">
+              <Grid>
+                <PathIcon Data="{x:Static svc:IconCatalog.Pause}"
+                          Foreground="{DynamicResource TextOnAccentBrush}"
+                          Width="14" Height="14"
+                          IsVisible="{Binding IsPlaying}" />
+                <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                          Foreground="{DynamicResource TextOnAccentBrush}"
+                          Width="14" Height="14"
+                          Margin="2,0,0,0"
+                          IsVisible="{Binding !IsPlaying}" />
+              </Grid>
+            </Button>
+
+            <Button Classes="rem-icon"
+                    Command="{Binding NextItemCommand}"
+                    IsEnabled="{Binding CanGoNext}"
+                    ToolTip.Tip="Next Playlist Item">
+              <PathIcon Data="{x:Static svc:IconCatalog.SkipNext}" Width="15" Height="15" />
+            </Button>
+
+            <Button Classes="rem-icon"
+                    Command="{Binding CycleLoopModeCommand}"
+                    ToolTip.Tip="{Binding LoopTooltip}">
+              <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Grid>
+                  <PathIcon Data="{x:Static svc:IconCatalog.Repeat}"
+                            Foreground="{DynamicResource PrimaryAccentBrush}"
+                            Width="14" Height="14"
+                            IsVisible="{Binding IsLoopActive}" />
+                  <PathIcon Data="{x:Static svc:IconCatalog.Repeat}"
+                            Width="14" Height="14"
+                            Opacity="0.6"
+                            IsVisible="{Binding !IsLoopActive}" />
+                </Grid>
+                <TextBlock Text="{Binding LoopBadgeText}"
+                           Foreground="{DynamicResource PrimaryAccentBrush}"
+                           FontSize="9"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding IsLoopActive}" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="rem-icon"
+                    Command="{Binding ToggleMuteCommand}"
+                    Margin="6,0,0,0"
+                    ToolTip.Tip="Mute / Unmute (M)">
+              <Grid>
+                <PathIcon Data="{x:Static svc:IconCatalog.VolumeMute}"
+                          Width="15" Height="15"
+                          Foreground="{DynamicResource DangerFgBrush}"
+                          IsVisible="{Binding IsMuted}" />
+                <PathIcon Data="{x:Static svc:IconCatalog.VolumeHigh}"
+                          Width="15" Height="15"
+                          IsVisible="{Binding !IsMuted}" />
+              </Grid>
+            </Button>
+
+            <Slider Minimum="0"
+                    Maximum="100"
+                    Width="74"
+                    Value="{Binding Volume, Mode=TwoWay}"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="{Binding Volume, StringFormat='Volume: {0}%'}" />
+          </StackPanel>
+
+          <!-- Center: Speed + Quality + Track Selectors + External Subtitles + Delay -->
+          <StackPanel Grid.Column="1"
+                      Orientation="Horizontal"
+                      Spacing="5"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Margin="8,0">
+
+            <ComboBox x:Name="SpeedComboBox"
+                      Classes="rem"
+                      ItemsSource="{Binding SpeedOptions}"
+                      SelectedItem="{Binding SelectedSpeedOption}"
+                      MinWidth="64"
+                      Padding="8,5"
+                      FontSize="12"
+                      ToolTip.Tip="Playback Speed">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:VideoSpeedOption">
+                  <TextBlock Text="{Binding Label}" FontSize="12" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox x:Name="QualityComboBox"
+                      Classes="rem"
+                      ItemsSource="{Binding QualityOptions}"
+                      SelectedItem="{Binding SelectedQualityOption}"
+                      MinWidth="74"
+                      Padding="8,5"
+                      FontSize="12"
+                      ToolTip.Tip="Stream Quality (lower saves internet bandwidth)">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:VideoQualityOption">
+                  <TextBlock Text="{Binding Label}" FontSize="12" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox x:Name="AudioTrackComboBox"
+                      Classes="rem"
+                      ItemsSource="{Binding AudioTracks}"
+                      SelectedItem="{Binding SelectedAudioTrack}"
+                      IsVisible="{Binding HasAudioTracks}"
+                      MaxWidth="135"
+                      Padding="8,5"
+                      FontSize="12"
+                      ToolTip.Tip="Audio Track">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="models:VideoTrackOption">
+                  <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox x:Name="SubtitleTrackComboBox"
+                      Classes="rem"
+                      ItemsSource="{Binding SubtitleTracks}"
+                      SelectedItem="{Binding SelectedSubtitleTrack}"
+                      IsVisible="{Binding HasSubtitleTracks}"
+                      MaxWidth="145"
+                      Padding="8,5"
+                      FontSize="12"
+                      ToolTip.Tip="Subtitle Track">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="models:VideoTrackOption">
+                  <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <!-- External Subtitle Controls -->
+            <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="1"
+                    Padding="4,2">
+              <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="rem-soft"
+                        Command="{Binding LoadSubtitleFileCommand}"
+                        BorderThickness="0"
+                        Padding="8,4"
+                        FontSize="11"
+                        ToolTip.Tip="Load external .srt / .ass / .vtt subtitle file (auto-converts non-UTF8 to UTF-8)">
+                  <StackPanel Orientation="Horizontal" Spacing="5">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Subtitles}" Width="13" Height="13" />
+                    <TextBlock Text="Load Sub" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Classes="rem-icon"
+                        Command="{Binding ToggleSubtitleUrlCommand}"
+                        Padding="5"
+                        ToolTip.Tip="Load external subtitle from URL">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Link}" Width="12" Height="12" />
+                </Button>
+
+                <Border Width="1" Height="16" Background="{DynamicResource BorderSoftBrush}" Margin="2,0" />
+
+                <Button Classes="rem-soft"
+                        Command="{Binding NudgeSubtitleDelayCommand}"
+                        CommandParameter="-100"
+                        BorderThickness="0"
+                        Content="-100ms"
+                        Padding="6,4"
+                        FontSize="10"
+                        ToolTip.Tip="Advance subtitles 100ms earlier" />
+
+                <Button Background="Transparent"
+                        BorderThickness="0"
+                        Command="{Binding ResetSubtitleDelayCommand}"
+                        Padding="5,3"
+                        Cursor="Hand"
+                        ToolTip.Tip="Subtitle delay offset (click to reset to 0 ms)">
+                  <TextBlock Text="{Binding SubtitleDelayDisplay}"
+                             Classes="muted"
+                             FontSize="10"
+                             FontWeight="SemiBold" />
+                </Button>
+
+                <Button Classes="rem-soft"
+                        Command="{Binding NudgeSubtitleDelayCommand}"
+                        CommandParameter="100"
+                        BorderThickness="0"
+                        Content="+100ms"
+                        Padding="6,4"
+                        FontSize="10"
+                        ToolTip.Tip="Delay subtitles 100ms later" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Right: Fullscreen + Headless + Kill -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Button Classes="rem-icon"
+                    Command="{Binding ToggleFullscreenCommand}"
+                    ToolTip.Tip="Toggle Fullscreen (F)">
+              <Grid>
+                <PathIcon Data="{x:Static svc:IconCatalog.ExitFullscreen}"
+                          Width="15" Height="15"
+                          IsVisible="{Binding IsFullscreen}" />
+                <PathIcon Data="{x:Static svc:IconCatalog.Fullscreen}"
+                          Width="15" Height="15"
+                          IsVisible="{Binding !IsFullscreen}" />
+              </Grid>
+            </Button>
+
+            <Button Classes="rem-soft"
+                    Command="{Binding MinimizeToHeadlessCommand}"
+                    Padding="9,6"
+                    FontSize="11"
+                    ToolTip.Tip="Run Headless (Audio Only)">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="13" Height="13" />
+                <TextBlock Text="Headless" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="rem-danger"
+                    Command="{Binding KillCommand}"
+                    Padding="9,6"
+                    FontSize="11"
+                    ToolTip.Tip="Stop &amp; Dispose LibVLC">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="12" Height="12" />
+                <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

@@ -1,0 +1,375 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.ProfilesView"
+             x:DataType="vm:ProfilesViewModel">
+
+  <Grid>
+    <Grid RowDefinitions="Auto,*" Margin="36,28,36,36">
+      <!-- Top Bar -->
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,28">
+        <Border Width="38" Height="38"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="1"
+                ClipToBounds="True"
+                Margin="0,0,14,0"
+                VerticalAlignment="Center">
+          <Grid>
+            <Image Source="{Binding BrandIconBitmap}"
+                   Stretch="UniformToFill"
+                   IsVisible="{Binding HasBrandIcon}" />
+            <TextBlock Text="R"
+                       FontSize="15"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource PrimaryAccentBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding !HasBrandIcon}" />
+          </Grid>
+        </Border>
+
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+          <TextBlock Text="Profiles"
+                     FontSize="24"
+                     FontWeight="SemiBold" />
+          <TextBlock Text="Select a workspace or create a new profile"
+                     Classes="muted"
+                     FontSize="13" />
+        </StackPanel>
+
+        <Button Grid.Column="2"
+                Classes="rem-btn"
+                Command="{Binding OpenSettingsCommand}"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
+            <TextBlock Text="Settings" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <!-- Profiles Grid -->
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="18" VerticalAlignment="Center">
+          <Border Classes="rem-card"
+                  Padding="20"
+                  HorizontalAlignment="Center"
+                  IsVisible="{Binding !HasProfiles}">
+            <StackPanel Spacing="6" HorizontalAlignment="Center">
+              <TextBlock Text="No profiles yet"
+                         FontSize="16"
+                         FontWeight="SemiBold"
+                         HorizontalAlignment="Center" />
+              <TextBlock Text="Create a profile below to configure your modular workspace."
+                         Classes="muted"
+                         FontSize="13"
+                         HorizontalAlignment="Center" />
+            </StackPanel>
+          </Border>
+
+          <WrapPanel HorizontalAlignment="Center" Orientation="Horizontal">
+            <ItemsControl ItemsSource="{Binding Profiles}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:ProfileCardViewModel">
+                  <Button Command="{Binding SelectCommand}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          Margin="8"
+                          Cursor="Hand">
+                    <Border Classes="rem-card"
+                            Width="188"
+                            Height="188"
+                            Padding="18">
+                      <Grid>
+                        <!-- Subtle Lock Badge when PIN-protected -->
+                        <Border IsVisible="{Binding HasPassword}"
+                                CornerRadius="{DynamicResource TabCornerRadius}"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                Padding="6"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Lock}"
+                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                    Width="12" Height="12" />
+                        </Border>
+
+                        <StackPanel Spacing="14"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                          <Grid Width="72" Height="72" HorizontalAlignment="Center">
+                            <Border Width="72" Height="72"
+                                    CornerRadius="999"
+                                    Background="{Binding AvatarBrush}"
+                                    IsVisible="{Binding !HasAvatar}">
+                              <TextBlock Text="{Binding Initials}"
+                                         FontSize="22"
+                                         FontWeight="SemiBold"
+                                         Foreground="#FFFFFF"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center" />
+                            </Border>
+
+                            <Border Width="72" Height="72"
+                                    CornerRadius="999"
+                                    ClipToBounds="True"
+                                    IsVisible="{Binding HasAvatar}">
+                              <Image Source="{Binding AvatarBitmap}"
+                                     Stretch="UniformToFill" />
+                            </Border>
+                          </Grid>
+
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="15"
+                                     FontWeight="SemiBold"
+                                     HorizontalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"
+                                     MaxWidth="150" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Add a Profile Card -->
+            <Button Command="{Binding OpenAddProfileCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="8"
+                    Cursor="Hand">
+              <Border Classes="rem-card"
+                      Width="188"
+                      Height="188"
+                      Padding="18">
+                <StackPanel Spacing="10"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                  <Border Width="48" Height="48"
+                          CornerRadius="{DynamicResource PillCornerRadius}"
+                          Background="{DynamicResource SurfaceAltBrush}"
+                          BorderBrush="{DynamicResource BorderSoftBrush}"
+                          BorderThickness="1"
+                          HorizontalAlignment="Center">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Plus}"
+                              Foreground="{DynamicResource PrimaryAccentBrush}"
+                              Width="18" Height="18" />
+                  </Border>
+                  <TextBlock Text="Add a Profile"
+                             FontSize="15"
+                             FontWeight="SemiBold"
+                             HorizontalAlignment="Center" />
+                  <TextBlock Text="Optional PFP &amp; PIN"
+                             Classes="muted"
+                             FontSize="12"
+                             HorizontalAlignment="Center" />
+                </StackPanel>
+              </Border>
+            </Button>
+          </WrapPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- Add Profile Modal -->
+    <Border IsVisible="{Binding IsAddProfileOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <Border Classes="rem-modal"
+              Width="440"
+              Padding="24"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <!-- Top Header + PFP Picker with Rem leaning on right above Profile Name -->
+          <StackPanel Grid.Row="0" Spacing="14" ZIndex="0">
+            <TextBlock Text="New Profile"
+                       FontSize="19"
+                       FontWeight="SemiBold" />
+
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <Grid Grid.Column="0" Width="58" Height="58" Margin="0,0,14,0">
+                <Border Width="58" Height="58"
+                        CornerRadius="999"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        IsVisible="{Binding !HasNewProfileAvatar}">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Image}"
+                            Foreground="{DynamicResource TextSecondaryBrush}"
+                            Width="20" Height="20" />
+                </Border>
+
+                <Border Width="58" Height="58"
+                        CornerRadius="999"
+                        ClipToBounds="True"
+                        IsVisible="{Binding HasNewProfileAvatar}">
+                  <Image Source="{Binding NewProfileAvatarPreview}"
+                         Stretch="UniformToFill" />
+                </Border>
+              </Grid>
+
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                <TextBlock Text="Profile Picture" FontSize="12" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="rem-soft"
+                          Command="{Binding ChooseNewProfilePfpCommand}"
+                          Content="Choose Image..." />
+                  <Button Classes="rem-danger"
+                          Command="{Binding ClearNewProfilePfpCommand}"
+                          Content="Clear"
+                          IsVisible="{Binding HasNewProfileAvatar}" />
+                </StackPanel>
+              </StackPanel>
+
+              <Image Grid.Column="2"
+                     Source="{Binding PopupArtBitmap}"
+                     Height="68"
+                     Stretch="Uniform"
+                     VerticalAlignment="Bottom"
+                     HorizontalAlignment="Right"
+                     Margin="0,-8,4,-14"
+                     IsHitTestVisible="False"
+                     IsVisible="{Binding HasPopupArt}" />
+            </Grid>
+          </StackPanel>
+
+          <!-- Inputs (ZIndex 1 so Rem emerges behind the top border of the section) -->
+          <Border Grid.Row="1"
+                  ZIndex="1"
+                  Background="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="0,1,0,0"
+                  Padding="0,14,0,0"
+                  Margin="0,10,0,16">
+            <StackPanel Spacing="12">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Profile Name" FontSize="12" FontWeight="SemiBold" />
+                <TextBox Classes="rem"
+                         Watermark="e.g. Main, Work, Media"
+                         Text="{Binding NewProfileName}"
+                         KeyDown="OnAddProfileKeyDown" />
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="Password / PIN (Optional)" FontSize="12" FontWeight="SemiBold" />
+                <TextBox Classes="rem"
+                         Watermark="Leave blank for instant unlock"
+                         PasswordChar="•"
+                         Text="{Binding NewProfilePassword}"
+                         KeyDown="OnAddProfileKeyDown" />
+              </StackPanel>
+
+              <Border IsVisible="{Binding HasAddProfileError}"
+                      Background="{DynamicResource DangerBgBrush}"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="12,8">
+                <TextBlock Text="{Binding AddProfileError}"
+                           Foreground="{DynamicResource DangerFgBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Grid.Row="2"
+                      ZIndex="1"
+                      Orientation="Horizontal"
+                      Spacing="10"
+                      HorizontalAlignment="Right">
+            <Button Classes="rem-btn"
+                    Command="{Binding CancelAddProfileCommand}"
+                    Content="Cancel"
+                    MinWidth="90" />
+            <Button Classes="rem-primary"
+                    Command="{Binding ConfirmAddProfileCommand}"
+                    Content="Create"
+                    MinWidth="96" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- Unlock Profile Modal -->
+    <Border IsVisible="{Binding IsUnlockOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <Border Classes="rem-modal"
+              Width="410"
+              Padding="24"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ZIndex="0">
+            <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,10,0" VerticalAlignment="Center">
+              <TextBlock Text="Unlock Profile"
+                         FontSize="19"
+                         FontWeight="SemiBold" />
+              <TextBlock Text="{Binding UnlockTargetProfileName, StringFormat='Enter password or PIN for {0}'}"
+                         Classes="muted"
+                         FontSize="12" />
+            </StackPanel>
+
+            <Image Grid.Column="1"
+                   Source="{Binding PopupArtBitmap}"
+                   Height="66"
+                   Stretch="Uniform"
+                   VerticalAlignment="Bottom"
+                   HorizontalAlignment="Right"
+                   Margin="0,-8,4,-14"
+                   IsHitTestVisible="False"
+                   IsVisible="{Binding HasPopupArt}" />
+          </Grid>
+
+          <Border Grid.Row="1"
+                  ZIndex="1"
+                  Background="{DynamicResource SurfaceBrush}"
+                  Margin="0,10,0,16">
+            <StackPanel Spacing="10">
+              <TextBox Classes="rem"
+                       Watermark="Password or PIN"
+                       PasswordChar="•"
+                       Text="{Binding UnlockPassword}"
+                       KeyDown="OnUnlockKeyDown" />
+
+              <Border IsVisible="{Binding HasUnlockError}"
+                      Background="{DynamicResource DangerBgBrush}"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="12,8">
+                <TextBlock Text="{Binding UnlockError}"
+                           Foreground="{DynamicResource DangerFgBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Grid.Row="2"
+                      ZIndex="1"
+                      Orientation="Horizontal"
+                      Spacing="10"
+                      HorizontalAlignment="Right">
+            <Button Classes="rem-btn"
+                    Command="{Binding CancelUnlockCommand}"
+                    Content="Cancel"
+                    MinWidth="90" />
+            <Button Classes="rem-primary"
+                    Command="{Binding ConfirmUnlockCommand}"
+                    Content="Unlock"
+                    MinWidth="96" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+  </Grid>
+</UserControl>

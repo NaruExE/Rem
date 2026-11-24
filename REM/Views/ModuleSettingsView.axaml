@@ -1,0 +1,576 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.ModuleSettingsView"
+             x:DataType="vm:ModuleSettingsViewModel">
+
+  <Border Classes="rem-modal"
+          Width="780"
+          Height="540"
+          ClipToBounds="True">
+    <Grid ColumnDefinitions="188,*">
+
+      <!-- Left Navigation Rail -->
+      <Border Grid.Column="0"
+              Background="{DynamicResource SidebarBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,1,0"
+              Padding="14,18">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="4,0,0,16">
+            <Border Width="28" Height="28"
+                    CornerRadius="{DynamicResource TabCornerRadius}"
+                    Background="{Binding AccentBrush}">
+              <PathIcon Data="{Binding ModuleIcon}"
+                        Width="14" Height="14"
+                        Foreground="#FFFFFF" />
+            </Border>
+            <TextBlock Text="App Settings"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+
+          <StackPanel Grid.Row="1" Spacing="4">
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsGeneralPage}"
+                    Command="{Binding SelectGeneralPageCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="14" Height="14" />
+                <TextBlock Text="General" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsSpotifyApiPage}"
+                    Command="{Binding SelectSpotifyApiPageCommand}"
+                    IsVisible="{Binding IsSpotify}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Spotify}" Width="14" Height="14" />
+                <TextBlock Text="Spotify &amp; APIs" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsYouTubePage}"
+                    Command="{Binding SelectYouTubePageCommand}"
+                    IsVisible="{Binding IsAudioStreamer}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.YouTube}" Width="14" Height="14" />
+                <TextBlock Text="YouTube FYP" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsTwitchApiPage}"
+                    Command="{Binding SelectTwitchApiPageCommand}"
+                    IsVisible="{Binding IsAudioStreamer}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Key}" Width="14" Height="14" />
+                <TextBlock Text="Twitch API" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsCategoriesPage}"
+                    Command="{Binding SelectCategoriesPageCommand}"
+                    IsVisible="{Binding IsAudioStreamer}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Twitch}" Width="14" Height="14" />
+                <TextBlock Text="Categories" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <Button Grid.Row="2"
+                  Classes="rem-btn"
+                  Command="{Binding CloseCommand}"
+                  Content="Close"
+                  HorizontalAlignment="Stretch" />
+        </Grid>
+      </Border>
+
+      <!-- Right Page Content -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="24,18,18,10">
+          <TextBlock Text="{Binding ModuleName}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Classes="rem-icon" Command="{Binding CloseCommand}">
+            <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="15" Height="15" />
+          </Button>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="12" Margin="24,4,24,24">
+
+            <Border IsVisible="{Binding HasFeedback}"
+                    Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource BorderStrongBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Padding="12,8">
+              <TextBlock Text="{Binding FeedbackMessage}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+            </Border>
+
+            <!-- PAGE 1: GENERAL -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsGeneralPage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding ModuleDescription}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding CurrentStateLabel, StringFormat='Current state: {0}'}" Classes="muted" FontSize="12" />
+                </StackPanel>
+              </Border>
+
+              <!-- Audio Streamer Specific General Options -->
+              <StackPanel Spacing="12" IsVisible="{Binding IsAudioStreamer}">
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Audio Quality / Bitrate" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Locked to direct non-adaptive streams (LibVLC HLS downgrading disabled)"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1"
+                              Classes="rem"
+                              ItemsSource="{Binding AudioQualityOptions}"
+                              SelectedItem="{Binding SelectedAudioQualityOption}"
+                              Width="240"
+                              VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Show Twitch Stream Thumbnails" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Off by default for lowest RAM; enables small 160px previews when on"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding ShowThumbnails}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="YouTube 403 yt-dlp Fallback" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Automatically fall back to yt-dlp.exe if YoutubeExplode gets throttled or 403'd"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding UseYtDlpFallback}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="yt-dlp.exe Status" FontSize="13" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding YtDlpStatusText}" Classes="muted" FontSize="11" TextWrapping="WrapWithOverflow" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <!-- Spotify Specific General Display Options -->
+              <StackPanel Spacing="12" IsVisible="{Binding IsSpotify}">
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Show Playlist Cover Icons" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Displays 26px playlist cover artwork in the Spotify left sidebar"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding ShowSpotifyPlaylistIcons}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Show Track Row Album Covers" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Turn off for lowest RAM usage when scrolling large playlists"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding ShowSpotifyTrackCovers}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Dynamic Ambient Color Glow" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Extracts dominant album art color for the subtle radial player backdrop"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding ShowSpotifyAmbientGlow}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="2" Margin="0,0,12,0">
+                        <TextBlock Text="Show Rem Companion Art" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Displays Rem above the Spotify player beside the song list"
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <ToggleSwitch Grid.Column="1"
+                                    IsChecked="{Binding ShowSpotifyRemArt}"
+                                    OnContent="On" OffContent="Off"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowSpotifyRemArt}">
+                      <TextBlock Grid.Column="0"
+                                 Text="Rem Companion Pose"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center" />
+                      <ComboBox Grid.Column="1"
+                                Classes="rem"
+                                ItemsSource="{Binding SpotifyRemPoseOptions}"
+                                SelectedItem="{Binding SelectedSpotifyRemPose}"
+                                Width="220"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+
+              <!-- Remove Module from Profile -->
+              <Border Background="{DynamicResource DangerBgBrush}"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock Text="Remove App from Profile"
+                               Foreground="{DynamicResource DangerFgBrush}"
+                               FontSize="13"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Stops the module if active and unpins it from this profile"
+                               Classes="muted"
+                               FontSize="11"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Button Grid.Column="1"
+                          Classes="rem-danger"
+                          Command="{Binding RemoveModuleCommand}"
+                          Content="Remove"
+                          VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+            </StackPanel>
+
+            <!-- PAGE 2: YOUTUBE FYP & ACCOUNT BROWSER -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsYouTubePage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Account FYP Browser (Cookies)" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Reads your signed-in YouTube session locally via yt-dlp to load your real For You and Subscriptions feeds with zero extra idle RAM."
+                             Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="4" Margin="0,0,12,0" VerticalAlignment="Center">
+                      <TextBlock Text="Browser Source" FontSize="12" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding YouTubeCookieStatusText}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1"
+                              Classes="rem"
+                              ItemsSource="{Binding BrowserOptions}"
+                              SelectedItem="{Binding SelectedBrowserOption}"
+                              Width="210"
+                              VerticalAlignment="Center" />
+                  </Grid>
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Custom Profile Folder / Name (Optional)" FontSize="12" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox Grid.Column="0"
+                               Classes="rem"
+                               Watermark="Leave blank for auto-detected default profile"
+                               Text="{Binding YouTubeProfileOverride}"
+                               Margin="0,0,8,0" />
+                      <Button Grid.Column="1"
+                              Classes="rem-primary"
+                              Command="{Binding SaveYouTubeProfileOverrideCommand}"
+                              Content="Save" />
+                    </Grid>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="Show YouTube Video Thumbnails" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="Decodes compact 160px previews and disposes them cleanly on Headless / Kill"
+                               Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <ToggleSwitch Grid.Column="1"
+                                IsChecked="{Binding ShowYouTubeThumbnails}"
+                                OnContent="On" OffContent="Off"
+                                MinWidth="0"
+                                VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <StackPanel Spacing="8">
+                <TextBlock Text="Pinned YouTube Topics (use + Topic in Audio Streamer to add more)"
+                           Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                <ItemsControl ItemsSource="{Binding PinnedYouTubeTopics}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:PinnedYouTubeTopicRowViewModel">
+                      <Border Background="{DynamicResource SurfaceAltBrush}"
+                              BorderBrush="{DynamicResource BorderSoftBrush}"
+                              BorderThickness="1"
+                              CornerRadius="{DynamicResource ControlCornerRadius}"
+                              Padding="12,8"
+                              Margin="0,0,0,6">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="{Binding Topic}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                          <Button Grid.Column="1"
+                                  Classes="rem-danger"
+                                  Command="{Binding RemoveCommand}"
+                                  Content="Remove" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+
+            <!-- PAGE 3: TWITCH API -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsTwitchApiPage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Twitch Developer App (Client Credentials)" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Required for category browsing and live feeds. Create a free app at dev.twitch.tv/console with Redirect URL http://localhost:8080/callback"
+                             Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Client ID" FontSize="12" FontWeight="SemiBold" />
+                    <TextBox Classes="rem" Watermark="Twitch Client ID" Text="{Binding TwitchClientId}" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Client Secret" FontSize="12" FontWeight="SemiBold" />
+                    <TextBox Classes="rem" Watermark="Twitch Client Secret" PasswordChar="•" Text="{Binding TwitchClientSecret}" />
+                  </StackPanel>
+
+                  <Button Classes="rem-primary"
+                          Command="{Binding SaveTwitchCredentialsCommand}"
+                          Content="Save Credentials"
+                          HorizontalAlignment="Left" />
+                </StackPanel>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Following (Live) OAuth" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding TwitchUserStatus}" Classes="muted" FontSize="12" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-soft"
+                            Command="{Binding ConnectTwitchAccountCommand}"
+                            IsEnabled="{Binding !IsOAuthBusy}"
+                            Content="Connect Twitch Account" />
+                    <Button Classes="rem-danger"
+                            Command="{Binding DisconnectTwitchAccountCommand}"
+                            Content="Disconnect"
+                            IsVisible="{Binding IsTwitchUserConnected}" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- PAGE 4: PINNED CATEGORIES -->
+            <StackPanel Spacing="10" IsVisible="{Binding IsCategoriesPage}">
+              <TextBlock Text="Pinned Twitch categories for this profile (use + Category in Audio Streamer to add more)."
+                         Classes="muted" FontSize="12" TextWrapping="Wrap" />
+
+              <ItemsControl ItemsSource="{Binding PinnedCategories}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:PinnedCategoryRowViewModel">
+                    <Border Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource ControlCornerRadius}"
+                            Padding="12,9"
+                            Margin="0,0,0,8">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding GameIdDisplay}" Classes="muted" FontSize="11" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Classes="rem-danger"
+                                Command="{Binding RemoveCommand}"
+                                Content="Remove" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <!-- PAGE 5: SPOTIFY & APIs -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsSpotifyApiPage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Spotify Web API (PKCE · Feb 2026 Spec)" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Create a Spotify Developer App with Redirect URI: http://127.0.0.1:8888/callback (no client secret needed — REM uses PKCE)."
+                             Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SpotifyApiStatusText}" Classes="muted" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" />
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Spotify Soloist API Key (Required for Playback)" FontSize="12" FontWeight="SemiBold" />
+                    <TextBox Classes="rem" PasswordChar="•" Watermark="Personal API Key from developer.spotify.com (Spotify Soloist)" Text="{Binding SpotifySoloistApiKey}" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Spotify Client ID (Web API · PKCE)" FontSize="12" FontWeight="SemiBold" />
+                    <TextBox Classes="rem" Watermark="32-character Spotify Client ID" Text="{Binding SpotifyClientId}" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Last.fm API Key (Optional — Powers Custom FYP)" FontSize="12" FontWeight="SemiBold" />
+                    <TextBox Classes="rem" Watermark="Last.fm API Key (free at last.fm/api)" Text="{Binding SpotifyLastFmApiKey}" />
+                  </StackPanel>
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-soft"
+                            Command="{Binding SaveSpotifySettingsCommand}"
+                            Content="Save Keys" />
+                    <Button Classes="rem-primary"
+                            Command="{Binding ConnectSpotifyApiCommand}"
+                            IsEnabled="{Binding !IsSpotifyOAuthBusy}"
+                            Content="Connect Spotify (PKCE)" />
+                    <Button Classes="rem-danger"
+                            Command="{Binding DisconnectSpotifyApiCommand}"
+                            Content="Disconnect"
+                            IsVisible="{Binding IsSpotifyApiConnected}" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Official Audio Engine &amp; Shared Disk Cache" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding SpotifyEngineStatusText}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding SoloistPathText}" Classes="muted" FontSize="11" TextWrapping="WrapWithOverflow" />
+
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,12,0" VerticalAlignment="Center">
+                      <TextBlock Text="Shared Audio Cache Limit" FontSize="12" FontWeight="SemiBold" />
+                      <TextBlock Text="Keeps played &amp; looped songs cached on SSD (0 KB/s on replay)"
+                                 Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ComboBox Grid.Column="1"
+                              Classes="rem"
+                              ItemsSource="{Binding SpotifyCacheOptions}"
+                              SelectedItem="{Binding SelectedSpotifyCacheSizeOption}"
+                              Width="210"
+                              VerticalAlignment="Center" />
+                  </Grid>
+
+                  <TextBlock Text="{Binding SpotifyCacheUsageText}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-soft"
+                            Command="{Binding RestartSoloistCommand}"
+                            Content="Restart Spotify Soloist" />
+                    <Button Classes="rem-danger"
+                            Command="{Binding ClearSpotifyCacheCommand}"
+                            IsEnabled="{Binding !IsClearingSpotifyCache}"
+                            Content="Clear Cache" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

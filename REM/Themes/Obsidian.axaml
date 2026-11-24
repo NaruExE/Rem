@@ -1,0 +1,54 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Typography -->
+  <FontFamily x:Key="ThemeFontFamily">Segoe UI Variable, Segoe UI, avares://REM/Assets/Fonts#Nunito, sans-serif</FontFamily>
+
+  <!-- Radii -->
+  <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+  <CornerRadius x:Key="ControlCornerRadius">7</CornerRadius>
+  <CornerRadius x:Key="TabCornerRadius">6</CornerRadius>
+  <CornerRadius x:Key="PillCornerRadius">999</CornerRadius>
+
+  <!-- Core Palette: Obsidian (Zen-inspired matte dark charcoal) -->
+  <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0E0F12" />
+  <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#0A0B0E" />
+  <SolidColorBrush x:Key="SurfaceBrush" Color="#13151A" />
+  <SolidColorBrush x:Key="SurfaceAltBrush" Color="#191C22" />
+  <SolidColorBrush x:Key="CardBrush" Color="#14161B" />
+  <SolidColorBrush x:Key="CardHoverBrush" Color="#1C1F26" />
+  <SolidColorBrush x:Key="ActiveTabBgBrush" Color="#20242D" />
+  <SolidColorBrush x:Key="BorderSoftBrush" Color="#232730" />
+  <SolidColorBrush x:Key="BorderStrongBrush" Color="#323846" />
+
+  <SolidColorBrush x:Key="PrimaryAccentBrush" Color="#7AA2F7" />
+  <SolidColorBrush x:Key="PrimaryAccentHoverBrush" Color="#8FB3FF" />
+  <SolidColorBrush x:Key="SecondaryAccentBrush" Color="#9AA5CE" />
+
+  <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E6E8EE" />
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8A91A0" />
+  <SolidColorBrush x:Key="TextOnAccentBrush" Color="#0B0D12" />
+
+  <!-- Module State Badges & Dots -->
+  <SolidColorBrush x:Key="StatusStoppedBgBrush" Color="#1B1E26" />
+  <SolidColorBrush x:Key="StatusStoppedFgBrush" Color="#7E8594" />
+
+  <SolidColorBrush x:Key="StatusRunningUiBgBrush" Color="#162920" />
+  <SolidColorBrush x:Key="StatusRunningUiFgBrush" Color="#6CD49B" />
+
+  <SolidColorBrush x:Key="StatusHeadlessBgBrush" Color="#1B2235" />
+  <SolidColorBrush x:Key="StatusHeadlessFgBrush" Color="#8AB4F8" />
+
+  <SolidColorBrush x:Key="StatusPausedBgBrush" Color="#2C2316" />
+  <SolidColorBrush x:Key="StatusPausedFgBrush" Color="#E5B567" />
+
+  <SolidColorBrush x:Key="StatusDotStoppedBrush" Color="#565C6B" />
+  <SolidColorBrush x:Key="StatusDotRunningUiBrush" Color="#59C98D" />
+  <SolidColorBrush x:Key="StatusDotHeadlessBrush" Color="#7AA2F7" />
+  <SolidColorBrush x:Key="StatusDotPausedBrush" Color="#E0AF68" />
+
+  <!-- Danger & Overlays -->
+  <SolidColorBrush x:Key="DangerBgBrush" Color="#2C181C" />
+  <SolidColorBrush x:Key="DangerFgBrush" Color="#F07D8D" />
+  <SolidColorBrush x:Key="OverlayBackdropBrush" Color="#A6060709" />
+</ResourceDictionary>
+

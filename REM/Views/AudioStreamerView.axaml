@@ -1,0 +1,770 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.AudioStreamerView"
+             x:DataType="vm:AudioStreamerViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Background="{DynamicResource AppBackgroundBrush}">
+
+    <!-- Hideable Top Module Status & Controls Bar -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding IsHeaderVisible}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,12">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="36" Height="36"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{Binding AccentBrush}">
+          <PathIcon Data="{Binding IconGeometry}"
+                    Width="17" Height="17"
+                    Foreground="#FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+              <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+            </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              <TextBlock Text="Headless" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+              <TextBlock Text="Pause" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-danger" Command="{Binding KillCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+              <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+              <TextBlock Text="Hub" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Search / URL Input Bar + Top-Right Platform Switcher -->
+    <Border Grid.Row="1"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,12">
+      <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+          <TextBox Grid.Column="0"
+                   Classes="rem"
+                   Watermark="{Binding SearchWatermark}"
+                   Text="{Binding SearchInput}"
+                   Margin="0,0,8,0">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SubmitSearchOrUrlCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+
+          <Button Grid.Column="1"
+                  Classes="rem-primary"
+                  Command="{Binding SubmitSearchOrUrlCommand}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Content="Play / Search"
+                  Margin="0,0,8,0" />
+
+          <!-- YouTube <-> Twitch Platform Switcher Toggle -->
+          <Button Grid.Column="2"
+                  Classes="rem-soft"
+                  Command="{Binding TogglePlatformCommand}"
+                  ToolTip.Tip="{Binding PlatformSwitchTooltip}"
+                  Padding="12,8"
+                  Margin="0,0,6,0">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <PathIcon Data="{x:Static svc:IconCatalog.YouTube}"
+                        Foreground="#FF4E4E"
+                        Width="16" Height="16"
+                        IsVisible="{Binding IsYouTubeMode}" />
+              <PathIcon Data="{x:Static svc:IconCatalog.Twitch}"
+                        Foreground="#A970FF"
+                        Width="15" Height="15"
+                        IsVisible="{Binding IsTwitchMode}" />
+              <TextBlock Text="{Binding ActivePlatformLabel}"
+                         FontSize="12"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+              <PathIcon Data="{x:Static svc:IconCatalog.SwitchProfile}"
+                        Width="12" Height="12"
+                        Opacity="0.65" />
+            </StackPanel>
+          </Button>
+
+          <Button Grid.Column="3"
+                  Classes="rem-icon"
+                  Command="{Binding OpenSettingsCommand}"
+                  ToolTip.Tip="Audio Streamer Settings"
+                  Margin="0,0,2,0">
+            <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
+          </Button>
+
+          <Button Grid.Column="4"
+                  Classes="rem-icon"
+                  Command="{Binding ToggleHeaderCommand}"
+                  IsVisible="{Binding !IsHeaderVisible}"
+                  ToolTip.Tip="Show status &amp; lifecycle bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="15" Height="15" />
+          </Button>
+        </Grid>
+
+        <ProgressBar IsIndeterminate="True"
+                     Height="2"
+                     IsVisible="{Binding IsBusy}"
+                     Foreground="{DynamicResource PrimaryAccentBrush}" />
+
+        <TextBlock Text="{Binding ActivityNotice}"
+                   Classes="muted"
+                   FontSize="12"
+                   IsVisible="{Binding HasActivityNotice}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Scrollable Main Area: YouTube Mode OR Twitch Mode -->
+    <ScrollViewer Grid.Row="2" Padding="20,16" HorizontalScrollBarVisibility="Disabled">
+      <Grid>
+
+        <!-- YOUTUBE MODE (Account FYP + Subscriptions + Topics + Search Results + Thumbnails) -->
+        <StackPanel Spacing="14" IsVisible="{Binding IsYouTubeMode}">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <ScrollViewer Grid.Column="0"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding YouTubeTabs}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="6" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:YouTubeFeedTabViewModel">
+                    <Button Classes="sidebar-tab"
+                            Classes.active="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}"
+                            Padding="12,7">
+                      <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <Button Grid.Column="1"
+                    Classes="rem-soft"
+                    Command="{Binding ToggleYouTubeTopicAddCommand}"
+                    Margin="8,0,6,0"
+                    ToolTip.Tip="Pin a YouTube topic or creator feed">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="12" Height="12" />
+                <TextBlock Text="Topic" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="2"
+                    Classes="rem-icon"
+                    Command="{Binding RefreshYouTubeFeedCommand}"
+                    IsEnabled="{Binding !IsBusy}"
+                    ToolTip.Tip="Refresh YouTube feed">
+              <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="15" Height="15" />
+            </Button>
+          </Grid>
+
+          <!-- Inline + Topic Box -->
+          <Border Classes="rem-card"
+                  Padding="14"
+                  IsVisible="{Binding IsYouTubeTopicAddOpen}">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBox Grid.Column="0"
+                       Classes="rem"
+                       Watermark="Pin a YouTube topic or channel (e.g. Synthwave, Video Essays)..."
+                       Text="{Binding NewYouTubeTopicInput}"
+                       Margin="0,0,8,0">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding AddYouTubeTopicCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Grid.Column="1"
+                      Classes="rem-primary"
+                      Command="{Binding AddYouTubeTopicCommand}"
+                      Content="Pin Topic"
+                      Margin="0,0,6,0" />
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
+                      Command="{Binding ToggleYouTubeTopicAddCommand}">
+                <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="13" Height="13" />
+              </Button>
+            </Grid>
+          </Border>
+
+          <!-- YouTube Search Results (when user searches text) -->
+          <StackPanel Spacing="12" IsVisible="{Binding HasSearchResults}">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding LastSearchQuery, StringFormat='Search results for &quot;{0}&quot;'}"
+                         FontSize="14"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="1"
+                      Classes="rem-soft"
+                      Command="{Binding ClearSearchResultsCommand}"
+                      Content="Back to Feed" />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding SearchResults}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:YouTubeSearchResultViewModel">
+                  <Button Command="{Binding PlayCommand}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          Margin="0,0,12,12"
+                          Cursor="Hand">
+                    <Border Classes="rem-card" Width="248" Padding="12">
+                      <StackPanel Spacing="8">
+                        <Border CornerRadius="{DynamicResource TabCornerRadius}"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                ClipToBounds="True"
+                                Height="124">
+                          <Grid>
+                            <Image Source="{Binding ThumbnailBitmap}"
+                                   Stretch="UniformToFill"
+                                   IsVisible="{Binding HasThumbnail}" />
+                            <PathIcon Data="{x:Static svc:IconCatalog.YouTube}"
+                                      Foreground="{DynamicResource TextMutedBrush}"
+                                      Width="28" Height="28"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{Binding !HasThumbnail}" />
+                            <Border CornerRadius="6"
+                                    Background="#CC0E1015"
+                                    Padding="6,2"
+                                    Margin="6"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom">
+                              <TextBlock Text="{Binding DurationDisplay}"
+                                         Foreground="#FFFFFF"
+                                         FontSize="10"
+                                         FontWeight="SemiBold" />
+                            </Border>
+                          </Grid>
+                        </Border>
+
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   MaxLines="2"
+                                   TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   MinHeight="34" />
+
+                        <TextBlock Text="{Binding Channel}"
+                                   Classes="muted"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Classes="rem-soft"
+                    Command="{Binding ShowMoreYouTubeSearchCommand}"
+                    Content="{Binding ShowMoreButtonLabel}"
+                    IsVisible="{Binding CanShowMoreYouTubeSearch}"
+                    IsEnabled="{Binding !IsBusy}"
+                    HorizontalAlignment="Center"
+                    Padding="22,8"
+                    Margin="0,4,0,8" />
+          </StackPanel>
+
+          <!-- YouTube FYP / Subscriptions / Topic Feed (when not showing search results) -->
+          <StackPanel Spacing="12" IsVisible="{Binding !HasSearchResults}">
+            <Border Classes="rem-card"
+                    Padding="18"
+                    IsVisible="{Binding ShowYouTubeBrowserPrompt}">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="4" Margin="0,0,12,0">
+                  <TextBlock Text="Connect Browser for Real YouTube Account FYP" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding YouTubeBrowserPromptDetail}"
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rem-primary"
+                        Command="{Binding OpenSettingsCommand}"
+                        Content="Open Settings"
+                        VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+
+            <Border Classes="rem-card"
+                    Padding="14"
+                    IsVisible="{Binding HasYouTubeFeedError}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding YouTubeFeedError}"
+                           Classes="muted"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0" />
+                <Button Grid.Column="1"
+                        Classes="rem-soft"
+                        Command="{Binding OpenSettingsCommand}"
+                        Content="YouTube Settings"
+                        VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding YouTubeFeedItems}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:YouTubeSearchResultViewModel">
+                  <Button Command="{Binding PlayCommand}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          Margin="0,0,12,12"
+                          Cursor="Hand">
+                    <Border Classes="rem-card" Width="248" Padding="12">
+                      <StackPanel Spacing="8">
+                        <Border CornerRadius="{DynamicResource TabCornerRadius}"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                ClipToBounds="True"
+                                Height="124">
+                          <Grid>
+                            <Image Source="{Binding ThumbnailBitmap}"
+                                   Stretch="UniformToFill"
+                                   IsVisible="{Binding HasThumbnail}" />
+                            <PathIcon Data="{x:Static svc:IconCatalog.YouTube}"
+                                      Foreground="{DynamicResource TextMutedBrush}"
+                                      Width="28" Height="28"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{Binding !HasThumbnail}" />
+                            <Border CornerRadius="6"
+                                    Background="#CC0E1015"
+                                    Padding="6,2"
+                                    Margin="6"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom">
+                              <TextBlock Text="{Binding DurationDisplay}"
+                                         Foreground="#FFFFFF"
+                                         FontSize="10"
+                                         FontWeight="SemiBold" />
+                            </Border>
+                          </Grid>
+                        </Border>
+
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   MaxLines="2"
+                                   TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis"
+                                   MinHeight="34" />
+
+                        <TextBlock Text="{Binding Channel}"
+                                   Classes="muted"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Classes="rem-soft"
+                    Command="{Binding ShowMoreYouTubeCommand}"
+                    Content="{Binding ShowMoreButtonLabel}"
+                    IsVisible="{Binding CanShowMoreYouTube}"
+                    IsEnabled="{Binding !IsBusy}"
+                    HorizontalAlignment="Center"
+                    Padding="22,8"
+                    Margin="0,4,0,8" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- TWITCH MODE (Category Tabs + Following + Live Stream Cards) -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsTwitchMode}">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+            <ScrollViewer Grid.Column="0"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding CategoryTabs}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="6" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:TwitchCategoryTabViewModel">
+                    <Button Classes="sidebar-tab"
+                            Classes.active="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}"
+                            Padding="12,7">
+                      <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <Button Grid.Column="1"
+                    Classes="rem-soft"
+                    Command="{Binding ToggleCategorySearchCommand}"
+                    Margin="8,0,6,0"
+                    ToolTip.Tip="Pin or unpin Twitch categories">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="12" Height="12" />
+                <TextBlock Text="Category" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <ComboBox Grid.Column="2"
+                      Classes="rem"
+                      ItemsSource="{Binding AvailableLanguages}"
+                      SelectedItem="{Binding SelectedLanguage}"
+                      Width="78"
+                      Margin="0,0,6,0"
+                      ToolTip.Tip="Filter stream language" />
+
+            <Button Grid.Column="3"
+                    Classes="rem-icon"
+                    Command="{Binding RefreshFeedCommand}"
+                    IsEnabled="{Binding !IsBusy}"
+                    ToolTip.Tip="Refresh Twitch feed">
+              <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="15" Height="15" />
+            </Button>
+          </Grid>
+
+          <!-- Inline Category Search Box (+ Category) -->
+          <Border Classes="rem-card"
+                  Padding="14"
+                  IsVisible="{Binding IsCategorySearchOpen}">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Grid.Column="0"
+                         Classes="rem"
+                         Watermark="Search Twitch categories (e.g. Valorant, Just Chatting)..."
+                         Text="{Binding CategorySearchQuery}"
+                         Margin="0,0,8,0">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding SearchCategoriesCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+                <Button Grid.Column="1"
+                        Classes="rem-primary"
+                        Command="{Binding SearchCategoriesCommand}"
+                        Content="Search"
+                        Margin="0,0,6,0" />
+                <Button Grid.Column="2"
+                        Classes="rem-icon"
+                        Command="{Binding ToggleCategorySearchCommand}">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="13" Height="13" />
+                </Button>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding CategorySearchResults}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:TwitchCategorySearchHitViewModel">
+                    <Button Classes="rem-soft"
+                            Command="{Binding TogglePinCommand}"
+                            Margin="0,0,8,8">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding PinLabel}"
+                                   Foreground="{DynamicResource PrimaryAccentBrush}"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <!-- Setup / Auth / Empty Notices -->
+          <Border Classes="rem-card"
+                  Padding="18"
+                  IsVisible="{Binding ShowTwitchSetupPrompt}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="4" Margin="0,0,12,0">
+                <TextBlock Text="Connect Twitch Helix API" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Add your Twitch Client ID &amp; Client Secret in Audio Streamer Settings → Twitch API to browse live categories here."
+                           Classes="muted"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1"
+                      Classes="rem-primary"
+                      Command="{Binding OpenSettingsCommand}"
+                      Content="Open Settings"
+                      VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+
+          <Border Classes="rem-card"
+                  Padding="18"
+                  IsVisible="{Binding ShowFollowAuthPrompt}">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="4" Margin="0,0,12,0">
+                <TextBlock Text="Twitch Account Not Connected" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock Text="Sign in via OAuth in Audio Streamer Settings → Twitch API to view your live followed channels."
+                           Classes="muted"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1"
+                      Classes="rem-primary"
+                      Command="{Binding OpenSettingsCommand}"
+                      Content="Connect Twitch"
+                      VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+
+          <Border Classes="rem-card"
+                  Padding="14"
+                  IsVisible="{Binding HasTwitchFeedError}">
+            <TextBlock Text="{Binding TwitchFeedError}"
+                       Classes="muted"
+                       FontSize="12"
+                       TextWrapping="Wrap" />
+          </Border>
+
+          <!-- Live Stream Cards -->
+          <ItemsControl ItemsSource="{Binding LiveStreams}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:TwitchStreamCardViewModel">
+                <Button Command="{Binding PlayCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        Margin="0,0,12,12"
+                        Cursor="Hand">
+                  <Border Classes="rem-card" Width="264" Padding="14">
+                    <StackPanel Spacing="8">
+                      <Border CornerRadius="{DynamicResource TabCornerRadius}"
+                              ClipToBounds="True"
+                              Height="110"
+                              IsVisible="{Binding HasThumbnail}">
+                        <Image Source="{Binding ThumbnailBitmap}" Stretch="UniformToFill" />
+                      </Border>
+
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding UserName}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Border Grid.Column="1"
+                                CornerRadius="{DynamicResource TabCornerRadius}"
+                                Background="{DynamicResource DangerBgBrush}"
+                                Padding="6,2"
+                                Margin="8,0,0,0">
+                          <TextBlock Text="{Binding ViewersDisplay}"
+                                     Foreground="{DynamicResource DangerFgBrush}"
+                                     FontSize="10"
+                                     FontWeight="SemiBold" />
+                        </Border>
+                      </Grid>
+
+                      <TextBlock Text="{Binding Title}"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 MaxLines="2"
+                                 TextWrapping="Wrap"
+                                 TextTrimming="CharacterEllipsis" />
+
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding GameName}"
+                                   Foreground="{DynamicResource PrimaryAccentBrush}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Language}"
+                                   Classes="muted"
+                                   FontSize="10"
+                                   FontWeight="SemiBold" />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Button Classes="rem-soft"
+                  Command="{Binding ShowMoreTwitchCommand}"
+                  Content="{Binding ShowMoreButtonLabel}"
+                  IsVisible="{Binding CanShowMoreTwitch}"
+                  IsEnabled="{Binding !IsBusy}"
+                  HorizontalAlignment="Center"
+                  Padding="22,8"
+                  Margin="0,4,0,8" />
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+
+    <!-- Docked Now Playing Bar -->
+    <Border Grid.Row="3"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="20,12">
+      <StackPanel Spacing="8">
+        <!-- Seek Bar (YouTube / VODs only; hidden for live streams) -->
+        <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding CanSeek}">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding PositionDisplay}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0" />
+          <Slider Grid.Column="1"
+                  Minimum="0"
+                  Maximum="{Binding SeekMaxSeconds}"
+                  Value="{Binding SeekPositionSeconds}"
+                  VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2"
+                     Text="{Binding DurationDisplay}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="10,0,0,0" />
+        </Grid>
+
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+          <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center" Margin="0,0,14,0">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding CurrentTrackTitle}"
+                         FontSize="14"
+                         FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis"
+                         MaxWidth="360" />
+              <Border CornerRadius="{DynamicResource TabCornerRadius}"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      Padding="6,2"
+                      IsVisible="{Binding HasCurrentTrack}">
+                <TextBlock Text="{Binding CurrentSourceLabel}"
+                           Classes="muted"
+                           FontSize="10"
+                           FontWeight="SemiBold" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding CurrentTrackChannel}"
+                       Classes="muted"
+                       FontSize="12"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <!-- Play / Pause -->
+          <Button Grid.Column="1"
+                  Classes="rem-primary"
+                  Command="{Binding TogglePlayPauseCommand}"
+                  IsEnabled="{Binding HasCurrentTrack}"
+                  Width="40"
+                  Height="36"
+                  Padding="0"
+                  Margin="0,0,12,0"
+                  ToolTip.Tip="Play / Pause">
+            <Grid>
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}"
+                        Foreground="{DynamicResource TextOnAccentBrush}"
+                        Width="15" Height="15"
+                        IsVisible="{Binding IsPlaying}" />
+              <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                        Foreground="{DynamicResource TextOnAccentBrush}"
+                        Width="15" Height="15"
+                        IsVisible="{Binding !IsPlaying}" />
+            </Grid>
+          </Button>
+
+          <!-- Volume Slider -->
+          <StackPanel Grid.Column="2"
+                      Orientation="Horizontal"
+                      Spacing="6"
+                      VerticalAlignment="Center"
+                      Margin="0,0,12,0">
+            <TextBlock Text="Vol" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+            <Slider Minimum="0"
+                    Maximum="100"
+                    Value="{Binding Volume}"
+                    Width="92"
+                    VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- Run Headless & Kill -->
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Button Classes="rem-soft"
+                    Command="{Binding MinimizeToHeadlessCommand}"
+                    ToolTip.Tip="Run Headless (keeps audio playing without UI)">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+                <TextBlock Text="Headless" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="rem-danger"
+                    Command="{Binding KillCommand}"
+                    ToolTip.Tip="Kill &amp; dispose LibVLC">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}"
+                        Foreground="{DynamicResource DangerFgBrush}"
+                        Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

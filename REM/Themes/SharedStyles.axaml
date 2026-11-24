@@ -1,0 +1,315 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="Window">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+
+  <Style Selector="PathIcon.rem-vector">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+  </Style>
+
+  <!-- Crisp matte surface card (no heavy shadows) -->
+  <Style Selector="Border.rem-card">
+    <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource CardCornerRadius}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.rem-card:pointerover">
+    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+  </Style>
+  <Style Selector="Border.rem-card.selected">
+    <Setter Property="Background" Value="{DynamicResource ActiveTabBgBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryAccentBrush}" />
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+
+  <!-- Modal / Overlay container (crisp 1px border, no blur shadow layer) -->
+  <Style Selector="Border.rem-modal">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource CardCornerRadius}" />
+  </Style>
+
+  <!-- Lightweight animated fade for modal backdrops -->
+  <Style Selector="Border.modal-overlay">
+    <Setter Property="Background" Value="{DynamicResource OverlayBackdropBrush}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- Collapsible Zen sidebar container -->
+  <Style Selector="Border.zen-sidebar">
+    <Setter Property="Background" Value="{DynamicResource SidebarBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Width" Duration="0:0:0.16" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- Zen-style vertical sidebar tabs -->
+  <Style Selector="Button.sidebar-tab">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource TabCornerRadius}" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.sidebar-tab:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}" />
+  </Style>
+  <Style Selector="Button.sidebar-tab.active">
+    <Setter Property="Background" Value="{DynamicResource ActiveTabBgBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.sidebar-tab.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource ActiveTabBgBrush}" />
+  </Style>
+
+  <!-- Status Dots -->
+  <Style Selector="Ellipse.status-dot">
+    <Setter Property="Width" Value="7" />
+    <Setter Property="Height" Value="7" />
+    <Setter Property="Fill" Value="{DynamicResource StatusDotStoppedBrush}" />
+  </Style>
+  <Style Selector="Ellipse.status-dot.stopped">
+    <Setter Property="Fill" Value="{DynamicResource StatusDotStoppedBrush}" />
+  </Style>
+  <Style Selector="Ellipse.status-dot.running-ui">
+    <Setter Property="Fill" Value="{DynamicResource StatusDotRunningUiBrush}" />
+  </Style>
+  <Style Selector="Ellipse.status-dot.headless">
+    <Setter Property="Fill" Value="{DynamicResource StatusDotHeadlessBrush}" />
+  </Style>
+  <Style Selector="Ellipse.status-dot.paused">
+    <Setter Property="Fill" Value="{DynamicResource StatusDotPausedBrush}" />
+  </Style>
+
+  <!-- Status Badges -->
+  <Style Selector="Border.status-badge">
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="Background" Value="{DynamicResource StatusStoppedBgBrush}" />
+  </Style>
+  <Style Selector="Border.status-badge.stopped">
+    <Setter Property="Background" Value="{DynamicResource StatusStoppedBgBrush}" />
+  </Style>
+  <Style Selector="Border.status-badge.running-ui">
+    <Setter Property="Background" Value="{DynamicResource StatusRunningUiBgBrush}" />
+  </Style>
+  <Style Selector="Border.status-badge.headless">
+    <Setter Property="Background" Value="{DynamicResource StatusHeadlessBgBrush}" />
+  </Style>
+  <Style Selector="Border.status-badge.paused">
+    <Setter Property="Background" Value="{DynamicResource StatusPausedBgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.status-badge-text">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource StatusStoppedFgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.status-badge-text.stopped">
+    <Setter Property="Foreground" Value="{DynamicResource StatusStoppedFgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.status-badge-text.running-ui">
+    <Setter Property="Foreground" Value="{DynamicResource StatusRunningUiFgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.status-badge-text.headless">
+    <Setter Property="Foreground" Value="{DynamicResource StatusHeadlessFgBrush}" />
+  </Style>
+  <Style Selector="TextBlock.status-badge-text.paused">
+    <Setter Property="Foreground" Value="{DynamicResource StatusPausedFgBrush}" />
+  </Style>
+
+  <!-- Buttons -->
+  <Style Selector="Button.rem-btn">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,8" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rem-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}" />
+  </Style>
+  <Style Selector="Button.rem-btn:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+
+  <Style Selector="Button.rem-primary">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="16,9" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{DynamicResource PrimaryAccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rem-primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PrimaryAccentHoverBrush}" />
+  </Style>
+  <Style Selector="Button.rem-primary:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+
+  <Style Selector="Button.rem-soft">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rem-soft:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}" />
+  </Style>
+  <Style Selector="Button.rem-soft:disabled">
+    <Setter Property="Opacity" Value="0.38" />
+  </Style>
+
+  <Style Selector="Button.rem-danger">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,7" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{DynamicResource DangerBgBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource DangerFgBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rem-danger:pointerover /template/ ContentPresenter">
+    <Setter Property="Opacity" Value="0.88" />
+  </Style>
+  <Style Selector="Button.rem-danger:disabled">
+    <Setter Property="Opacity" Value="0.38" />
+  </Style>
+
+  <Style Selector="Button.rem-icon">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource TabCornerRadius}" />
+    <Setter Property="Padding" Value="7" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.rem-icon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+
+  <!-- Custom Discord-style Titlebar Buttons -->
+  <Style Selector="Button.titlebar-btn">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.titlebar-btn:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+
+  <Style Selector="Button.titlebar-close">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.titlebar-close:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#C42B1C" />
+    <Setter Property="Foreground" Value="#FFFFFF" />
+  </Style>
+
+  <!-- Inputs -->
+  <Style Selector="TextBox.rem">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="ComboBox.rem">
+    <Setter Property="FontFamily" Value="{DynamicResource ThemeFontFamily}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+</Styles>

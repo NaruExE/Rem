@@ -1,0 +1,1154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.SpotifyView"
+             x:DataType="vm:SpotifyViewModel">
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="SpotifyTrackRowTemplate" DataType="vm:SpotifyTrackRowViewModel">
+      <Border Classes="rem-card"
+              Padding="10,8"
+              Margin="0,0,0,6"
+              ContextRequested="OnTrackRowContextRequested">
+        <Grid ColumnDefinitions="26,Auto,*,Auto,Auto">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding Index}"
+                     Classes="muted"
+                     FontSize="12"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center" />
+
+          <Border Grid.Column="1"
+                  Width="38" Height="38"
+                  CornerRadius="6"
+                  Background="{DynamicResource SurfaceAltBrush}"
+                  ClipToBounds="True"
+                  Margin="6,0,12,0"
+                  IsVisible="{Binding ShowCover}"
+                  VerticalAlignment="Center">
+            <Grid>
+              <Image Source="{Binding CoverBitmap}"
+                     Stretch="UniformToFill"
+                     IsVisible="{Binding HasCover}" />
+              <PathIcon Data="{x:Static svc:IconCatalog.MusicNote}"
+                        Foreground="{DynamicResource TextMutedBrush}"
+                        Width="15" Height="15"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding !HasCover}" />
+            </Grid>
+          </Border>
+
+          <Button Grid.Column="2"
+                  Command="{Binding PlayCommand}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="0"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch"
+                  VerticalAlignment="Center"
+                  Cursor="Hand">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding Title}"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Artists}"
+                         Classes="muted"
+                         FontSize="11"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Button>
+
+          <Button Grid.Column="3"
+                  Classes="rem-icon"
+                  Command="{Binding ToggleLikeCommand}"
+                  ToolTip.Tip="{Binding LikeTooltip}"
+                  Margin="8,0,6,0"
+                  VerticalAlignment="Center">
+            <Grid>
+              <PathIcon Data="{x:Static svc:IconCatalog.Heart}"
+                        Foreground="#1DB954"
+                        Width="13" Height="13"
+                        IsVisible="{Binding IsLiked}" />
+              <PathIcon Data="{x:Static svc:IconCatalog.Plus}"
+                        Width="12" Height="12"
+                        IsVisible="{Binding !IsLiked}" />
+            </Grid>
+          </Button>
+
+          <TextBlock Grid.Column="4"
+                     Text="{Binding DurationDisplay}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="0,0,4,0" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid Background="{DynamicResource AppBackgroundBrush}">
+    <!-- Dynamic Ambient Glow Backdrop (extracted from 32x32 album cover) -->
+    <Border IsHitTestVisible="False"
+            Background="{Binding EffectiveAmbientGlowBrush}" />
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+      <!-- Hideable Top Module Status & Controls Bar -->
+      <Border Grid.Row="0"
+              IsVisible="{Binding IsHeaderVisible}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="20,12">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Border Width="36" Height="36"
+                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{Binding AccentBrush}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Width="17" Height="17"
+                      Foreground="#FFFFFF"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+          </Border>
+
+          <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+                <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+                <TextBlock Text="Headless" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+                <TextBlock Text="Pause" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-danger" Command="{Binding KillCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+                <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+                <TextBlock Text="Hub" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+              <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Middle Workspace: Slim Left Nav + Main Content + Toggleable Right Drawer -->
+      <Grid Grid.Row="1" ColumnDefinitions="204,*,Auto">
+
+        <!-- Slim Left Navigation -->
+        <Border Grid.Column="0"
+                Background="#99101319"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="0,0,1,0"
+                Padding="12,14">
+          <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <StackPanel Grid.Row="0" Spacing="4">
+              <Button Classes="sidebar-tab"
+                      Classes.active="{Binding IsHomeSection}"
+                      Command="{Binding SelectHomeCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Sparkles}" Width="14" Height="14" />
+                  <TextBlock Text="Home / FYP" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <Button Classes="sidebar-tab"
+                      Classes.active="{Binding IsSearchSection}"
+                      Command="{Binding SelectSearchCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Search}" Width="14" Height="14" />
+                  <TextBlock Text="Search" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <Button Classes="sidebar-tab"
+                      Classes.active="{Binding IsCollectionSection}"
+                      Command="{Binding SelectLikedSongsCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Heart}" Width="14" Height="14" />
+                  <TextBlock Text="Liked Songs" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Spacing="8" Margin="6,14,6,8">
+              <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
+              <TextBlock Text="YOUR PLAYLISTS"
+                         Classes="muted"
+                         FontSize="10"
+                         FontWeight="SemiBold" />
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding Playlists}" Margin="0,0,0,8">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:SpotifyPlaylistNavViewModel">
+                    <Button Classes="sidebar-tab"
+                            Classes.active="{Binding IsSelected}"
+                            Command="{Binding SelectCommand}"
+                            ContextRequested="OnPlaylistRowContextRequested"
+                            Padding="8,7"
+                            Margin="0,0,0,2">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Border Grid.Column="0"
+                                Width="26" Height="26"
+                                CornerRadius="5"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                ClipToBounds="True"
+                                Margin="0,0,8,0"
+                                IsVisible="{Binding ShowCoverIcon}"
+                                VerticalAlignment="Center">
+                          <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="12"
+                                     FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding TrackCountText}"
+                                     Classes="muted"
+                                     FontSize="10"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <PathIcon Grid.Column="2"
+                                  Data="{x:Static svc:IconCatalog.Pin}"
+                                  Foreground="#1DB954"
+                                  Width="11" Height="11"
+                                  Margin="6,0,0,0"
+                                  VerticalAlignment="Center"
+                                  IsVisible="{Binding IsPinned}" />
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <Border Grid.Row="3"
+                    Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Padding="10,8"
+                    Margin="0,6,0,0">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2" Margin="0,0,6,0">
+                  <TextBlock Text="Engine" Classes="muted" FontSize="10" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding EngineStatusText}"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rem-icon"
+                        Command="{Binding RetryEngineCommand}"
+                        ToolTip.Tip="Reconnect / Start Spotify Soloist">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="12" Height="12" />
+                </Button>
+              </Grid>
+            </Border>
+          </Grid>
+        </Border>
+
+        <!-- Main View Content -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto,*">
+
+          <!-- Top Search + Utility Toolbar -->
+          <Border Grid.Row="0"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="0,0,0,1"
+                  Padding="18,12">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+              <TextBox Grid.Column="0"
+                       Classes="rem"
+                       Watermark="Search Spotify songs or artists (up to 10 results)..."
+                       Text="{Binding SearchQuery}"
+                       Margin="0,0,8,0">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+
+              <Button Grid.Column="1"
+                      Classes="rem-primary"
+                      Command="{Binding SearchCommand}"
+                      IsEnabled="{Binding !IsBusy}"
+                      Content="Search"
+                      Margin="0,0,8,0" />
+
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
+                      Command="{Binding OpenSettingsCommand}"
+                      ToolTip.Tip="Spotify &amp; API Settings"
+                      Margin="0,0,2,0">
+                <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
+              </Button>
+
+              <Button Grid.Column="3"
+                      Classes="rem-icon"
+                      Command="{Binding ToggleHeaderCommand}"
+                      IsVisible="{Binding !IsHeaderVisible}"
+                      ToolTip.Tip="Show status &amp; lifecycle bar">
+                <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="15" Height="15" />
+              </Button>
+            </Grid>
+          </Border>
+
+          <!-- Busy Progress Bar -->
+          <ProgressBar Grid.Row="1"
+                       IsIndeterminate="True"
+                       Height="2"
+                       IsVisible="{Binding IsBusy}"
+                       Foreground="{DynamicResource PrimaryAccentBrush}" />
+
+          <!-- Soloist Setup / Connect Pairing Cards -->
+          <StackPanel Grid.Row="2" Spacing="8" Margin="18,12,18,0">
+            <Border Classes="rem-card"
+                    Padding="16"
+                    IsVisible="{Binding NeedsSoloistApiKey}">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="4" Margin="0,0,14,0">
+                  <TextBlock Text="Add Spotify Soloist API Key" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="Paste your personal Spotify Soloist API Key (from developer.spotify.com) into Settings → Spotify &amp; APIs to start official lossless Spotify playback."
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rem-primary"
+                        Command="{Binding OpenSettingsCommand}"
+                        Content="Open Settings"
+                        VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+
+            <Border Classes="rem-card"
+                    Padding="16"
+                    IsVisible="{Binding NeedsConnectPairing}">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="4" Margin="0,0,14,0">
+                  <TextBlock Text="Pair REM in Spotify Connect (One-Time)" FontSize="15" FontWeight="SemiBold" />
+                  <TextBlock Text="Open Spotify on your phone or browser and select the 'REM' speaker device once to authenticate Spotify Soloist, then control everything from REM."
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <Button Classes="rem-soft"
+                          Command="{Binding ActivateDeviceCommand}"
+                          Content="Activate REM" />
+                  <Button Classes="rem-primary"
+                          Command="{Binding OpenSettingsCommand}"
+                          Content="Settings" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+
+          <!-- Scrollable Content View -->
+          <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="14" Margin="18,14,18,48">
+
+              <!-- SECTION: HOME / FYP -->
+              <StackPanel Spacing="12" IsVisible="{Binding IsHomeSection}">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="For You" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding FypSubtitle}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <Button Grid.Column="1"
+                          Classes="rem-soft"
+                          Command="{Binding RefreshFypCommand}"
+                          IsEnabled="{Binding !IsBusy}"
+                          Margin="0,0,6,0"
+                          VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="13" Height="13" />
+                      <TextBlock Text="Refresh" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+
+                  <Button Grid.Column="2"
+                          Classes="rem-primary"
+                          Command="{Binding PlayActiveCollectionCommand}"
+                          VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="13" Height="13" />
+                      <TextBlock Text="Play Mix" Foreground="{DynamicResource TextOnAccentBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+
+                <Border Classes="rem-card" Padding="16" IsVisible="{Binding !HasWebApiAuth}">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="3" Margin="0,0,12,0">
+                      <TextBlock Text="Connect Spotify Web API (PKCE)" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Add your Spotify Client ID in Settings → Spotify &amp; APIs (with optional Last.fm API Key) for Personalized FYP, Search, Liked Songs, and Playlists."
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Classes="rem-primary"
+                            Command="{Binding OpenSettingsCommand}"
+                            Content="Open Settings"
+                            VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding FypTracks}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+              </StackPanel>
+
+              <!-- SECTION: SEARCH RESULTS -->
+              <StackPanel Spacing="12" IsVisible="{Binding IsSearchSection}">
+                <TextBlock Text="Search Results" FontSize="20" FontWeight="SemiBold" />
+
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
+                  <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding SearchTracks}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+              </StackPanel>
+
+              <!-- SECTION: LIKED SONGS / PLAYLIST -->
+              <StackPanel Spacing="12" IsVisible="{Binding IsCollectionSection}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="{Binding CollectionTitle}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding CollectionSubtitle}" Classes="muted" FontSize="12" />
+                  </StackPanel>
+
+                  <Button Grid.Column="1"
+                          Classes="rem-primary"
+                          Command="{Binding PlayActiveCollectionCommand}"
+                          VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="13" Height="13" />
+                      <TextBlock Text="Play All" Foreground="{DynamicResource TextOnAccentBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
+                  <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding CollectionTracks}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Rem Companion Sitting Above Player (Bottom-Right of Song List, Left of Lyrics) -->
+          <Image Grid.Row="3"
+                 Source="{Binding RemCompanionBitmap}"
+                 Stretch="Uniform"
+                 MaxHeight="152"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Bottom"
+                 Margin="0,0,10,0"
+                 IsHitTestVisible="False"
+                 IsVisible="{Binding ShowRemCompanion}" />
+        </Grid>
+
+        <!-- Toggleable Right Drawer: Synced Lyrics & Up Next / Queue -->
+        <Border Grid.Column="2"
+                Width="316"
+                IsVisible="{Binding IsDrawerOpen}"
+                Background="#B011141B"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="1,0,0,0">
+          <Grid RowDefinitions="Auto,*">
+            <Border Grid.Row="0"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,10">
+              <Grid ColumnDefinitions="*,*,Auto">
+                <Button Grid.Column="0"
+                        Classes="sidebar-tab"
+                        Classes.active="{Binding IsLyricsDrawerActive}"
+                        Command="{Binding SelectLyricsTabCommand}"
+                        Margin="0,0,4,0">
+                  <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Lyrics}" Width="13" Height="13" />
+                    <TextBlock Text="Lyrics" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="1"
+                        Classes="sidebar-tab"
+                        Classes.active="{Binding IsQueueDrawerActive}"
+                        Command="{Binding SelectQueueTabCommand}"
+                        Margin="0,0,4,0">
+                  <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                    <PathIcon Data="{x:Static svc:IconCatalog.QueueList}" Width="13" Height="13" />
+                    <TextBlock Text="Queue" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="2"
+                        Classes="rem-icon"
+                        Command="{Binding ToggleLyricsDrawerCommand}"
+                        ToolTip.Tip="Close drawer">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="12" Height="12" />
+                </Button>
+              </Grid>
+            </Border>
+
+            <!-- Synced Lyrics Pane -->
+            <ScrollViewer Grid.Row="1"
+                          x:Name="LyricsScrollViewer"
+                          IsVisible="{Binding IsLyricsDrawerActive}"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="10" Margin="14,12,14,18">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding LyricsStatusText}"
+                             Classes="muted"
+                             FontSize="11"
+                             TextWrapping="Wrap"
+                             VerticalAlignment="Center"
+                             Margin="0,0,6,0" />
+                  <Button Grid.Column="1"
+                          Classes="rem-icon"
+                          Command="{Binding RetryLyricsCommand}"
+                          ToolTip.Tip="Retry / refresh lyrics"
+                          Margin="0,0,2,0">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="12" Height="12" />
+                  </Button>
+                  <Button Grid.Column="2"
+                          Classes="rem-icon"
+                          Command="{Binding ToggleLyricsSearchCommand}"
+                          ToolTip.Tip="Search or pick alternate lyrics"
+                          Margin="0,0,2,0">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Search}" Width="12" Height="12" />
+                  </Button>
+                  <Button Grid.Column="3"
+                          Classes="rem-icon"
+                          Command="{Binding ToggleLyricsFullscreenCommand}"
+                          ToolTip.Tip="Fullscreen Lyrics">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Fullscreen}" Width="12" Height="12" />
+                  </Button>
+                </Grid>
+
+                <!-- Manual Lyrics Search & Picker -->
+                <Border Classes="rem-card"
+                        Padding="10"
+                        IsVisible="{Binding IsLyricsSearchOpen}">
+                  <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox Grid.Column="0"
+                               Classes="rem"
+                               Watermark="Artist &amp; song title..."
+                               Text="{Binding LyricsSearchQuery}"
+                               FontSize="12"
+                               Margin="0,0,6,0">
+                        <TextBox.KeyBindings>
+                          <KeyBinding Gesture="Enter" Command="{Binding SearchLyricsManualCommand}" />
+                        </TextBox.KeyBindings>
+                      </TextBox>
+                      <Button Grid.Column="1"
+                              Classes="rem-primary"
+                              Command="{Binding SearchLyricsManualCommand}"
+                              Content="Find"
+                              Padding="10,6"
+                              FontSize="11" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding LyricsSearchResults}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:SpotifyLyricCandidateRowViewModel">
+                          <Button Command="{Binding SelectCommand}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="0"
+                                  Margin="0,0,0,4"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Stretch"
+                                  Cursor="Hand">
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="8,6">
+                              <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,6,0">
+                                  <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Border Grid.Column="1"
+                                        CornerRadius="4"
+                                        Background="{DynamicResource SurfaceBrush}"
+                                        Padding="5,2"
+                                        VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Badge}" Classes="muted" FontSize="9" FontWeight="Bold" />
+                                </Border>
+                              </Grid>
+                            </Border>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+
+                <!-- Sync Timing Controls (Click-to-Sync & Nudge) -->
+                <StackPanel Spacing="4" IsVisible="{Binding IsSyncedLyrics}">
+                  <Border Background="{DynamicResource SurfaceAltBrush}"
+                          BorderBrush="{DynamicResource BorderSoftBrush}"
+                          BorderThickness="1"
+                          CornerRadius="8"
+                          Padding="6,5">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                      <Button Grid.Column="0"
+                              Classes="rem-soft"
+                              Command="{Binding NudgeLyricsOffsetCommand}"
+                              CommandParameter="-500"
+                              Content="-0.5"
+                              Padding="6,3"
+                              FontSize="10"
+                              ToolTip.Tip="Shift lyrics 0.5s earlier"
+                              Margin="0,0,3,0" />
+                      <Button Grid.Column="1"
+                              Classes="rem-soft"
+                              Command="{Binding NudgeLyricsOffsetCommand}"
+                              CommandParameter="-100"
+                              Content="-0.1"
+                              Padding="6,3"
+                              FontSize="10"
+                              ToolTip.Tip="Shift lyrics 0.1s earlier" />
+                      <Button Grid.Column="2"
+                              Command="{Binding ResetLyricsOffsetCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="4,2"
+                              HorizontalAlignment="Center"
+                              ToolTip.Tip="Reset lyrics offset to 0.0s"
+                              Cursor="Hand">
+                        <TextBlock Text="{Binding LyricsOffsetDisplay}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                      </Button>
+                      <Button Grid.Column="3"
+                              Classes="rem-soft"
+                              Command="{Binding NudgeLyricsOffsetCommand}"
+                              CommandParameter="100"
+                              Content="+0.1"
+                              Padding="6,3"
+                              FontSize="10"
+                              ToolTip.Tip="Shift lyrics 0.1s later"
+                              Margin="0,0,3,0" />
+                      <Button Grid.Column="4"
+                              Classes="rem-soft"
+                              Command="{Binding NudgeLyricsOffsetCommand}"
+                              CommandParameter="500"
+                              Content="+0.5"
+                              Padding="6,3"
+                              FontSize="10"
+                              ToolTip.Tip="Shift lyrics 0.5s later"
+                              Margin="0,0,4,0" />
+                      <Button Grid.Column="5"
+                              Classes="sidebar-tab"
+                              Classes.active="{Binding IsSyncPickMode}"
+                              Command="{Binding ToggleSyncPickModeCommand}"
+                              Content="{Binding SyncPickButtonText}"
+                              Padding="7,3"
+                              FontSize="10"
+                              FontWeight="SemiBold"
+                              ToolTip.Tip="Click a lyric line below to sync it to the current playback time" />
+                    </Grid>
+                  </Border>
+
+                  <TextBlock Text="Click the line being sung right now to sync timing"
+                             Foreground="{DynamicResource PrimaryAccentBrush}"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding IsSyncPickMode}" />
+                </StackPanel>
+
+                <ItemsControl x:Name="LyricsItemsControl"
+                              ItemsSource="{Binding LyricLines}"
+                              IsVisible="{Binding IsSyncedLyrics}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyLyricLineViewModel">
+                      <Button Command="{Binding ClickCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              ToolTip.Tip="{Binding TimestampDisplay, StringFormat='Click to jump or sync ({0})'}"
+                              Cursor="Hand">
+                        <Border Padding="8,6" CornerRadius="7" Margin="0,0,0,2">
+                          <Grid ColumnDefinitions="34,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding TimestampDisplay}"
+                                       Classes="muted"
+                                       FontSize="10"
+                                       Opacity="0.48"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+                            <Grid Grid.Column="1">
+                              <TextBlock Text="{Binding Text}"
+                                         FontSize="15"
+                                         FontWeight="Bold"
+                                         Foreground="{DynamicResource PrimaryAccentBrush}"
+                                         TextWrapping="Wrap"
+                                         IsVisible="{Binding IsActive}" />
+                              <TextBlock Text="{Binding Text}"
+                                         Classes="muted"
+                                         FontSize="13"
+                                         Opacity="0.68"
+                                         TextWrapping="Wrap"
+                                         IsVisible="{Binding !IsActive}" />
+                            </Grid>
+                          </Grid>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{Binding PlainLyrics}"
+                           FontSize="13"
+                           LineHeight="20"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasPlainLyrics}" />
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Up Next / Queue Pane -->
+            <ScrollViewer Grid.Row="1"
+                          IsVisible="{Binding IsQueueDrawerActive}"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="8" Margin="14,12,14,18">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Up Next" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <Button Grid.Column="1"
+                          Classes="rem-icon"
+                          Command="{Binding RefreshQueueCommand}"
+                          ToolTip.Tip="Refresh Queue">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="12" Height="12" />
+                  </Button>
+                </Grid>
+
+                <TextBlock Text="{Binding QueueStatusText}"
+                           Classes="muted"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding !HasQueueEntries}" />
+
+                <ItemsControl ItemsSource="{Binding QueueEntries}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyQueueRowViewModel">
+                      <Button Command="{Binding PlayCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              Margin="0,0,0,6"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Cursor="Hand">
+                        <Border Classes="rem-card" Padding="10,8">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,8,0">
+                              <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Artists}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Border Grid.Column="1"
+                                    CornerRadius="4"
+                                    Background="{DynamicResource SurfaceAltBrush}"
+                                    Padding="5,2"
+                                    VerticalAlignment="Center">
+                              <TextBlock Text="{Binding ProviderLabel}" Classes="muted" FontSize="9" FontWeight="SemiBold" />
+                            </Border>
+                          </Grid>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- Floating Toast Pill -->
+      <Border Grid.Row="1"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Bottom"
+              Margin="0,0,18,12"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderStrongBrush}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="12,7"
+              IsHitTestVisible="False"
+              IsVisible="{Binding HasToastMessage}">
+        <TextBlock Text="{Binding ToastMessage}" FontSize="12" FontWeight="SemiBold" />
+      </Border>
+
+      <!-- Fullscreen Lyrics Stage Overlay (keeps bottom Player Bar visible) -->
+      <Border Grid.Row="0"
+              Grid.RowSpan="2"
+              Background="#EE0B0D12"
+              IsVisible="{Binding IsLyricsFullscreen}">
+        <Grid>
+          <Border IsHitTestVisible="False" Background="{Binding EffectiveAmbientGlowBrush}" />
+
+          <Grid RowDefinitions="Auto,*">
+            <!-- Top Fullscreen Controls -->
+            <Border Grid.Row="0"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="24,14">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Border Grid.Column="0"
+                        Width="44" Height="44"
+                        CornerRadius="8"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        ClipToBounds="True"
+                        Margin="0,0,14,0"
+                        VerticalAlignment="Center">
+                  <Grid>
+                    <Image Source="{Binding CurrentAlbumArt}" Stretch="UniformToFill" IsVisible="{Binding HasCurrentAlbumArt}" />
+                    <PathIcon Data="{x:Static svc:IconCatalog.Spotify}"
+                              Foreground="{DynamicResource PrimaryAccentBrush}"
+                              Width="20" Height="20"
+                              IsVisible="{Binding !HasCurrentAlbumArt}" />
+                  </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" Margin="0,0,16,0">
+                  <TextBlock Text="{Binding CurrentTrackTitle}" FontSize="16" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding CurrentTrackArtist}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- Sync Bar inside Fullscreen -->
+                <Border Grid.Column="2"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="8,5"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding IsSyncedLyrics}">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Classes="rem-soft" Command="{Binding NudgeLyricsOffsetCommand}" CommandParameter="-500" Content="-0.5" Padding="7,3" FontSize="11" />
+                    <Button Classes="rem-soft" Command="{Binding NudgeLyricsOffsetCommand}" CommandParameter="-100" Content="-0.1" Padding="7,3" FontSize="11" />
+                    <Button Command="{Binding ResetLyricsOffsetCommand}" Background="Transparent" BorderThickness="0" Padding="6,2" Cursor="Hand">
+                      <TextBlock Text="{Binding LyricsOffsetDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" />
+                    </Button>
+                    <Button Classes="rem-soft" Command="{Binding NudgeLyricsOffsetCommand}" CommandParameter="100" Content="+0.1" Padding="7,3" FontSize="11" />
+                    <Button Classes="rem-soft" Command="{Binding NudgeLyricsOffsetCommand}" CommandParameter="500" Content="+0.5" Padding="7,3" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSyncPickMode}" Command="{Binding ToggleSyncPickModeCommand}" Content="{Binding SyncPickButtonText}" Padding="9,3" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0" />
+                  </StackPanel>
+                </Border>
+
+                <Button Grid.Column="3"
+                        Classes="rem-soft"
+                        Command="{Binding CloseLyricsFullscreenCommand}"
+                        ToolTip.Tip="Exit Fullscreen Lyrics (Esc)"
+                        VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{x:Static svc:IconCatalog.ExitFullscreen}" Width="14" Height="14" />
+                    <TextBlock Text="Exit Fullscreen" FontSize="12" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </Border>
+
+            <!-- Centered Large Sing-Along Lyrics -->
+            <ScrollViewer Grid.Row="1"
+                          x:Name="FullscreenLyricsScrollViewer"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="14" MaxWidth="780" HorizontalAlignment="Center" Margin="32,28,32,48">
+                <TextBlock Text="{Binding LyricsStatusText}"
+                           Classes="muted"
+                           FontSize="12"
+                           HorizontalAlignment="Center" />
+
+                <TextBlock Text="Click the line being sung right now to sync timing"
+                           Foreground="{DynamicResource PrimaryAccentBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           IsVisible="{Binding IsSyncPickMode}" />
+
+                <ItemsControl x:Name="FullscreenLyricsItemsControl"
+                              ItemsSource="{Binding LyricLines}"
+                              IsVisible="{Binding IsSyncedLyrics}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyLyricLineViewModel">
+                      <Button Command="{Binding ClickCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Cursor="Hand">
+                        <Border Padding="14,10" CornerRadius="10" Margin="0,0,0,4">
+                          <Grid ColumnDefinitions="46,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding TimestampDisplay}"
+                                       Classes="muted"
+                                       FontSize="12"
+                                       Opacity="0.45"
+                                       VerticalAlignment="Center" />
+                            <Grid Grid.Column="1">
+                              <TextBlock Text="{Binding Text}"
+                                         FontSize="26"
+                                         FontWeight="Bold"
+                                         Foreground="{DynamicResource PrimaryAccentBrush}"
+                                         TextWrapping="Wrap"
+                                         IsVisible="{Binding IsActive}" />
+                              <TextBlock Text="{Binding Text}"
+                                         Classes="muted"
+                                         FontSize="20"
+                                         Opacity="0.48"
+                                         TextWrapping="Wrap"
+                                         IsVisible="{Binding !IsActive}" />
+                            </Grid>
+                          </Grid>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{Binding PlainLyrics}"
+                           FontSize="18"
+                           LineHeight="28"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           IsVisible="{Binding HasPlainLyrics}" />
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <!-- Floating Bottom Player Bar -->
+      <Border Grid.Row="2"
+              Margin="12,4,12,12"
+              CornerRadius="{DynamicResource CardCornerRadius}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderStrongBrush}"
+              BorderThickness="1"
+              Padding="16,10">
+        <StackPanel Spacing="6">
+          <!-- Seek Scrub Bar -->
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding PositionDisplay}"
+                       Classes="muted"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       Margin="0,0,10,0" />
+            <Slider Grid.Column="1"
+                    x:Name="SeekSlider"
+                    Minimum="0"
+                    Maximum="{Binding SeekMaxSeconds}"
+                    Value="{Binding SeekPositionSeconds}"
+                    IsEnabled="{Binding HasCurrentTrack}"
+                    VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2"
+                       Text="{Binding DurationDisplay}"
+                       Classes="muted"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       Margin="10,0,0,0" />
+          </Grid>
+
+          <!-- Track Info + Transport + Drawer/Volume + Headless/Kill -->
+          <Grid ColumnDefinitions="*,Auto,*">
+            <!-- Left: Art + Info + Heart -->
+            <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+              <Border Grid.Column="0"
+                      Width="46" Height="46"
+                      CornerRadius="8"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      ClipToBounds="True"
+                      Margin="0,0,12,0">
+                <Grid>
+                  <Image Source="{Binding CurrentAlbumArt}" Stretch="UniformToFill" IsVisible="{Binding HasCurrentAlbumArt}" />
+                  <PathIcon Data="{x:Static svc:IconCatalog.Spotify}"
+                            Foreground="{DynamicResource PrimaryAccentBrush}"
+                            Width="20" Height="20"
+                            IsVisible="{Binding !HasCurrentAlbumArt}" />
+                </Grid>
+              </Border>
+
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                <TextBlock Text="{Binding CurrentTrackTitle}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding CurrentTrackArtist}"
+                             Classes="muted"
+                             FontSize="11"
+                             TextTrimming="CharacterEllipsis"
+                             MaxWidth="180" />
+                  <TextBlock Text="{Binding CurrentAudioSpec}"
+                             Classes="muted"
+                             FontSize="10"
+                             Opacity="0.65"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
+                      Command="{Binding ToggleLikeCurrentCommand}"
+                      IsEnabled="{Binding HasCurrentTrack}"
+                      ToolTip.Tip="Like / Unlike song"
+                      VerticalAlignment="Center">
+                <Grid>
+                  <PathIcon Data="{x:Static svc:IconCatalog.Heart}"
+                            Foreground="#1DB954"
+                            Width="15" Height="15"
+                            IsVisible="{Binding IsCurrentTrackLiked}" />
+                  <PathIcon Data="{x:Static svc:IconCatalog.HeartOutline}"
+                            Width="15" Height="15"
+                            IsVisible="{Binding !IsCurrentTrackLiked}" />
+                </Grid>
+              </Button>
+            </Grid>
+
+            <!-- Center: Shuffle, Prev, Play/Pause, Next, Repeat -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="14,0">
+              <Button Classes="rem-icon"
+                      Command="{Binding ToggleShuffleCommand}"
+                      ToolTip.Tip="Toggle Shuffle">
+                <Grid>
+                  <PathIcon Data="{x:Static svc:IconCatalog.Shuffle}"
+                            Foreground="{DynamicResource PrimaryAccentBrush}"
+                            Width="15" Height="15"
+                            IsVisible="{Binding IsShuffled}" />
+                  <PathIcon Data="{x:Static svc:IconCatalog.Shuffle}"
+                            Width="15" Height="15"
+                            Opacity="0.6"
+                            IsVisible="{Binding !IsShuffled}" />
+                </Grid>
+              </Button>
+
+              <Button Classes="rem-icon"
+                      Command="{Binding PrevTrackCommand}"
+                      ToolTip.Tip="Previous">
+                <PathIcon Data="{x:Static svc:IconCatalog.SkipPrev}" Width="16" Height="16" />
+              </Button>
+
+              <Button Classes="rem-primary"
+                      Command="{Binding TogglePlayPauseCommand}"
+                      Width="40" Height="38"
+                      CornerRadius="999"
+                      Padding="0"
+                      ToolTip.Tip="Play / Pause">
+                <Grid>
+                  <PathIcon Data="{x:Static svc:IconCatalog.Pause}"
+                            Foreground="{DynamicResource TextOnAccentBrush}"
+                            Width="15" Height="15"
+                            IsVisible="{Binding IsPlaying}" />
+                  <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                            Foreground="{DynamicResource TextOnAccentBrush}"
+                            Width="15" Height="15"
+                            IsVisible="{Binding !IsPlaying}" />
+                </Grid>
+              </Button>
+
+              <Button Classes="rem-icon"
+                      Command="{Binding NextTrackCommand}"
+                      ToolTip.Tip="Next">
+                <PathIcon Data="{x:Static svc:IconCatalog.SkipNext}" Width="16" Height="16" />
+              </Button>
+
+              <Button Classes="rem-icon"
+                      Command="{Binding CycleRepeatCommand}"
+                      ToolTip.Tip="{Binding RepeatTooltip}">
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Repeat}" Width="15" Height="15" />
+                  <TextBlock Text="{Binding RepeatLabel}"
+                             FontSize="9"
+                             FontWeight="Bold"
+                             Foreground="{DynamicResource PrimaryAccentBrush}"
+                             IsVisible="{Binding IsRepeatActive}"
+                             VerticalAlignment="Top" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+            <!-- Right: Lyrics, Queue, Volume, Headless, Kill -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <Button Classes="rem-icon"
+                      Command="{Binding ToggleLyricsDrawerCommand}"
+                      ToolTip.Tip="Toggle Synced Lyrics">
+                <PathIcon Data="{x:Static svc:IconCatalog.Lyrics}" Width="14" Height="14" />
+              </Button>
+
+              <Button Classes="rem-icon"
+                      Command="{Binding ToggleQueueDrawerCommand}"
+                      ToolTip.Tip="Toggle Queue">
+                <PathIcon Data="{x:Static svc:IconCatalog.QueueList}" Width="14" Height="14" />
+              </Button>
+
+              <PathIcon Data="{x:Static svc:IconCatalog.VolumeHigh}"
+                        Width="14" Height="14"
+                        Margin="4,0,0,0"
+                        VerticalAlignment="Center" />
+              <Slider Minimum="0"
+                      Maximum="100"
+                      Value="{Binding Volume}"
+                      Width="78"
+                      VerticalAlignment="Center" />
+
+              <Button Classes="rem-soft"
+                      Command="{Binding MinimizeToHeadlessCommand}"
+                      Margin="4,0,0,0"
+                      ToolTip.Tip="Run Headless (disposes UI &amp; art, keeps audio playing)">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              </Button>
+
+              <Button Classes="rem-danger"
+                      Command="{Binding KillCommand}"
+                      ToolTip.Tip="Kill Spotify Soloist engine">
+                <PathIcon Data="{x:Static svc:IconCatalog.Kill}"
+                          Foreground="{DynamicResource DangerFgBrush}"
+                          Width="14" Height="14" />
+              </Button>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

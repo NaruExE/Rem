@@ -1,0 +1,728 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:views="using:REM.Views"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+  <Grid>
+    <Grid ColumnDefinitions="Auto,*">
+
+      <!-- Collapsible Zen-Style Left Vertical Sidebar -->
+      <Border Grid.Column="0"
+              Classes="zen-sidebar"
+              IsVisible="{Binding !IsImmersiveFullscreen}"
+              Width="{Binding SidebarWidth}">
+        <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+          <!-- Top Brand + Collapse Toggle + Hub Tab -->
+          <StackPanel Grid.Row="0" Spacing="10" Margin="10,14,10,0">
+            <Grid ColumnDefinitions="Auto,*,Auto"
+                  IsVisible="{Binding !IsSidebarCollapsed}"
+                  Margin="4,0,0,2">
+              <Border Width="28" Height="28"
+                      CornerRadius="{DynamicResource TabCornerRadius}"
+                      Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      ClipToBounds="True">
+                <Grid>
+                  <Image Source="{Binding BrandIconBitmap}"
+                         Stretch="UniformToFill"
+                         IsVisible="{Binding HasBrandIcon}" />
+                  <TextBlock Text="R"
+                             FontSize="13"
+                             FontWeight="Bold"
+                             Foreground="{DynamicResource PrimaryAccentBrush}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding !HasBrandIcon}" />
+                </Grid>
+              </Border>
+
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          Spacing="7"
+                          Margin="9,0,6,0"
+                          VerticalAlignment="Center">
+                <TextBlock Text="REM"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Border CornerRadius="{DynamicResource TabCornerRadius}"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        Padding="6,2"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="{Binding WorkingSetTooltip}">
+                  <TextBlock Text="{Binding WorkingSetText}"
+                             Classes="muted"
+                             FontSize="10"
+                             FontWeight="SemiBold" />
+                </Border>
+              </StackPanel>
+
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
+                      Command="{Binding ToggleSidebarCommand}"
+                      ToolTip.Tip="Collapse sidebar">
+                <PathIcon Data="{x:Static svc:IconCatalog.SidebarCollapse}" Width="15" Height="15" />
+              </Button>
+            </Grid>
+
+            <!-- Collapsed Top Header -->
+            <Button Classes="rem-icon"
+                    Command="{Binding ToggleSidebarCommand}"
+                    IsVisible="{Binding IsSidebarCollapsed}"
+                    HorizontalAlignment="Center"
+                    ToolTip.Tip="Expand sidebar">
+              <PathIcon Data="{x:Static svc:IconCatalog.SidebarExpand}" Width="16" Height="16" />
+            </Button>
+
+            <!-- Hub Home Tab -->
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsHubActive}"
+                    Command="{Binding ShowHubCommand}"
+                    ToolTip.Tip="App Hub">
+              <Grid>
+                <StackPanel Orientation="Horizontal"
+                            Spacing="10"
+                            IsVisible="{Binding !IsSidebarCollapsed}">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Home}"
+                            Width="15" Height="15" />
+                  <TextBlock Text="App Hub"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+
+                <PathIcon Data="{x:Static svc:IconCatalog.Home}"
+                          Width="16" Height="16"
+                          HorizontalAlignment="Center"
+                          IsVisible="{Binding IsSidebarCollapsed}" />
+              </Grid>
+            </Button>
+
+            <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="2,2" />
+          </StackPanel>
+
+          <!-- Running / Headless / Paused App Tabs -->
+          <ScrollViewer Grid.Row="1"
+                        Margin="10,8,10,4"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="6">
+              <TextBlock Text="ACTIVE APPS"
+                         Classes="muted"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         Margin="8,0,0,2"
+                         IsVisible="{Binding HasAnyActiveModule}" />
+
+              <ItemsControl ItemsSource="{Binding SidebarTabs}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:SidebarTabViewModel">
+                    <Button Classes="sidebar-tab"
+                            Classes.active="{Binding IsActiveTab}"
+                            Command="{Binding OpenUiCommand}"
+                            Margin="0,0,0,3"
+                            ToolTip.Tip="{Binding Name}">
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Open UI" Command="{Binding OpenUiCommand}" />
+                          <MenuItem Header="Run Headless" Command="{Binding RunHeadlessCommand}" />
+                          <MenuItem Header="Pause" Command="{Binding PauseCommand}" />
+                          <Separator />
+                          <MenuItem Header="Kill" Command="{Binding KillCommand}" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
+
+                      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                        <Ellipse Classes="status-dot"
+                                 Classes.running-ui="{Binding IsRunningUi}"
+                                 Classes.headless="{Binding IsRunningHeadless}"
+                                 Classes.paused="{Binding IsPaused}"
+                                 VerticalAlignment="Center" />
+
+                        <PathIcon Grid.Column="1"
+                                  Data="{Binding IconGeometry}"
+                                  Width="15" Height="15"
+                                  Margin="8,0,0,0"
+                                  VerticalAlignment="Center" />
+
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding Name}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding !IsCompact}" />
+
+                        <Border Grid.Column="3"
+                                CornerRadius="4"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                Padding="5,1"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding !IsCompact}">
+                          <TextBlock Text="{Binding StateBadgeText}"
+                                     Classes="muted"
+                                     FontSize="10"
+                                     FontWeight="SemiBold" />
+                        </Border>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Larger Flush Bottom-Left Rem Artwork (Starts Directly From the Divider Line) -->
+          <Image Grid.Row="2"
+                 Source="{Binding CornerArtBitmap}"
+                 Stretch="Uniform"
+                 MaxHeight="210"
+                 Margin="4,0,4,0"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Bottom"
+                 IsVisible="{Binding ShowCornerArt}" />
+
+          <!-- Profile + Settings Footer + Bottom-Left Grayed-Out Bandwidth Readout -->
+          <Border Grid.Row="3"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="0,1,0,0"
+                  Padding="12,10,12,8">
+            <Grid>
+              <StackPanel Spacing="6" IsVisible="{Binding !IsSidebarCollapsed}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Grid Width="30" Height="30" VerticalAlignment="Center">
+                    <Border Width="30" Height="30"
+                            CornerRadius="999"
+                            Background="{Binding ProfileAvatarBrush}"
+                            IsVisible="{Binding !HasProfileAvatar}">
+                      <TextBlock Text="{Binding ProfileInitials}"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 Foreground="#FFFFFF"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center" />
+                    </Border>
+
+                    <Border Width="30" Height="30"
+                            CornerRadius="999"
+                            ClipToBounds="True"
+                            IsVisible="{Binding HasProfileAvatar}">
+                      <Image Source="{Binding ProfileAvatarBitmap}"
+                             Stretch="UniformToFill" />
+                    </Border>
+                  </Grid>
+
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding ProfileName}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis"
+                             Margin="8,0,6,0"
+                             VerticalAlignment="Center" />
+
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+                    <Button Classes="rem-icon"
+                            Command="{Binding OpenSettingsCommand}"
+                            ToolTip.Tip="Settings">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="14" Height="14" />
+                    </Button>
+
+                    <Button Classes="rem-icon"
+                            Command="{Binding SwitchProfileCommand}"
+                            ToolTip.Tip="Switch Profile">
+                      <PathIcon Data="{x:Static svc:IconCatalog.SwitchProfile}" Width="14" Height="14" />
+                    </Button>
+                  </StackPanel>
+                </Grid>
+
+                <TextBlock Text="{Binding BandwidthText}"
+                           Classes="muted"
+                           FontSize="10"
+                           Opacity="0.6"
+                           HorizontalAlignment="Left"
+                           ToolTip.Tip="{Binding BandwidthTooltip}" />
+              </StackPanel>
+
+              <!-- Collapsed Footer -->
+              <StackPanel Spacing="6"
+                          HorizontalAlignment="Center"
+                          IsVisible="{Binding IsSidebarCollapsed}">
+                <Button Classes="rem-icon"
+                        Command="{Binding OpenSettingsCommand}"
+                        ToolTip.Tip="Settings">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
+                </Button>
+                <Button Classes="rem-icon"
+                        Command="{Binding SwitchProfileCommand}"
+                        ToolTip.Tip="Switch Profile">
+                  <PathIcon Data="{x:Static svc:IconCatalog.SwitchProfile}" Width="15" Height="15" />
+                </Button>
+                <TextBlock Text="{Binding BandwidthCompactText}"
+                           Classes="muted"
+                           FontSize="9"
+                           Opacity="0.6"
+                           HorizontalAlignment="Center"
+                           ToolTip.Tip="{Binding BandwidthTooltip}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+
+      <!-- Right Workspace Pane -->
+      <Grid Grid.Column="1" Background="{DynamicResource AppBackgroundBrush}">
+
+        <!-- App Hub Grid -->
+        <Grid RowDefinitions="Auto,*"
+              Margin="32,26,32,28"
+              IsVisible="{Binding IsHubActive}">
+          <StackPanel Grid.Row="0" Spacing="3" Margin="0,0,0,24">
+            <TextBlock Text="{Binding HubTitle}"
+                       FontSize="24"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="Which fuckery are we up to today?"
+                       Classes="muted"
+                       FontSize="13" />
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="16">
+              <Border Classes="rem-card"
+                      Padding="18"
+                      IsVisible="{Binding IsEmpty}">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="No apps pinned to this profile yet"
+                             FontSize="15"
+                             FontWeight="SemiBold" />
+                  <TextBlock Text="Click &quot;Add an App&quot; below to pick modules for this workspace."
+                             Classes="muted"
+                             FontSize="12" />
+                </StackPanel>
+              </Border>
+
+              <!-- Clean App Tiles + Add an App at the end of the row -->
+              <ItemsControl ItemsSource="{Binding DashboardCards}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.DataTemplates>
+                  <DataTemplate DataType="vm:ModuleTileViewModel">
+                    <Border Classes="rem-card"
+                            Width="236"
+                            Height="148"
+                            Margin="0,0,14,14">
+                      <Grid>
+                        <Button Command="{Binding OpenActionChooserCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch"
+                                Cursor="Hand">
+                          <Grid RowDefinitions="Auto,*,Auto">
+                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+                              <Border Width="36" Height="36"
+                                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                                      Background="{Binding AccentBrush}">
+                                <PathIcon Data="{Binding IconGeometry}"
+                                          Width="17" Height="17"
+                                          Foreground="#FFFFFF"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                              </Border>
+
+                              <StackPanel Grid.Column="1"
+                                          Orientation="Horizontal"
+                                          Spacing="6"
+                                          Margin="10,0,22,0"
+                                          VerticalAlignment="Center">
+                                <Ellipse Classes="status-dot"
+                                         Classes.stopped="{Binding IsStopped}"
+                                         Classes.running-ui="{Binding IsRunningUi}"
+                                         Classes.headless="{Binding IsRunningHeadless}"
+                                         Classes.paused="{Binding IsPaused}" />
+                                <TextBlock Text="{Binding StateLabel}"
+                                           Classes="muted"
+                                           FontSize="11"
+                                           FontWeight="SemiBold" />
+                              </StackPanel>
+                            </Grid>
+
+                            <StackPanel Grid.Row="2" Spacing="3">
+                              <TextBlock Text="{Binding Name}"
+                                         FontSize="15"
+                                         FontWeight="SemiBold"
+                                         TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Description}"
+                                         Classes="muted"
+                                         FontSize="12"
+                                         TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                          </Grid>
+                        </Button>
+
+                        <Button Classes="rem-icon"
+                                Command="{Binding OpenSettingsCommand}"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="8"
+                                ToolTip.Tip="App Settings">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="13" Height="13" />
+                        </Button>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+
+                  <DataTemplate DataType="vm:AddAppTileModel">
+                    <Button Command="{Binding OpenPickerCommand}"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Padding="0"
+                            Margin="0,0,14,14"
+                            Cursor="Hand">
+                      <Border Classes="rem-card"
+                              Width="200"
+                              Height="148"
+                              Padding="16">
+                        <StackPanel Spacing="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                          <Border Width="40" Height="40"
+                                  CornerRadius="{DynamicResource PillCornerRadius}"
+                                  Background="{DynamicResource SurfaceAltBrush}"
+                                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                                  BorderThickness="1"
+                                  HorizontalAlignment="Center">
+                            <PathIcon Data="{x:Static svc:IconCatalog.Plus}"
+                                      Foreground="{DynamicResource PrimaryAccentBrush}"
+                                      Width="16" Height="16" />
+                          </Border>
+                          <TextBlock Text="Add an App"
+                                     FontSize="14"
+                                     FontWeight="SemiBold"
+                                     HorizontalAlignment="Center" />
+                          <TextBlock Text="Choose modules"
+                                     Classes="muted"
+                                     FontSize="11"
+                                     HorizontalAlignment="Center" />
+                        </StackPanel>
+                      </Border>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+
+        <!-- Running App Workspace View -->
+        <ContentControl Content="{Binding ActiveModuleView}"
+                        IsVisible="{Binding IsModuleViewOpen}" />
+      </Grid>
+    </Grid>
+
+    <!-- Per-Module Settings Modal -->
+    <Border IsVisible="{Binding IsModuleSettingsOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <ContentControl Content="{Binding ActiveModuleSettings}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+        <ContentControl.DataTemplates>
+          <DataTemplate DataType="vm:ModuleSettingsViewModel">
+            <views:ModuleSettingsView />
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
+    </Border>
+
+    <!-- App Action Chooser Modal -->
+    <Border IsVisible="{Binding IsActionSheetOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <Border Classes="rem-modal"
+              Width="440"
+              Padding="22"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <!-- Header with Rem leaning on the right above the status box -->
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ZIndex="0">
+            <Border Grid.Column="0"
+                    Width="42" Height="42"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Background="{Binding ActionModuleAccentBrush}"
+                    VerticalAlignment="Top">
+              <PathIcon Data="{Binding ActionModuleIcon}"
+                        Width="20" Height="20"
+                        Foreground="#FFFFFF"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Margin="12,0,88,0" Spacing="2" VerticalAlignment="Center">
+              <TextBlock Text="{Binding ActionModuleName}"
+                         FontSize="16"
+                         FontWeight="SemiBold" />
+              <TextBlock Text="{Binding ActionModuleDescription}"
+                         Classes="muted"
+                         FontSize="12"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Image Grid.Column="1"
+                   Grid.ColumnSpan="2"
+                   Source="{Binding PopupArtBitmap}"
+                   Height="74"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Bottom"
+                   Margin="0,-8,26,-16"
+                   IsHitTestVisible="False"
+                   IsVisible="{Binding HasPopupArt}" />
+
+            <Button Grid.Column="2"
+                    Classes="rem-icon"
+                    Command="{Binding CloseActionSheetCommand}"
+                    VerticalAlignment="Top"
+                    ZIndex="2">
+              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <!-- Status Box (ZIndex 1 so Rem emerges cleanly from behind its top border) -->
+          <Border Grid.Row="1"
+                  ZIndex="1"
+                  Margin="0,12,0,14"
+                  Background="{DynamicResource SurfaceAltBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="1"
+                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Padding="12,9">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="status-badge"
+                      Classes.stopped="{Binding ActionIsStopped}"
+                      Classes.running-ui="{Binding ActionIsRunningUi}"
+                      Classes.headless="{Binding ActionIsRunningHeadless}"
+                      Classes.paused="{Binding ActionIsPaused}"
+                      VerticalAlignment="Center">
+                <TextBlock Text="{Binding ActionModuleStateLabel}"
+                           Classes="status-badge-text"
+                           Classes.stopped="{Binding ActionIsStopped}"
+                           Classes.running-ui="{Binding ActionIsRunningUi}"
+                           Classes.headless="{Binding ActionIsRunningHeadless}"
+                           Classes.paused="{Binding ActionIsPaused}" />
+              </Border>
+
+              <TextBlock Grid.Column="1"
+                         Text="{Binding ActionModuleSummary}"
+                         Classes="muted"
+                         FontSize="11"
+                         Margin="10,0,0,0"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </Border>
+
+          <!-- Fixed Full-Width Equal Columns Icon Row -->
+          <Grid Grid.Row="2" ZIndex="1" ColumnDefinitions="*,*,*,*">
+            <Button Grid.Column="0"
+                    Classes="rem-primary"
+                    Command="{Binding ActionStartUiCommand}"
+                    IsEnabled="{Binding ActionCanStart}"
+                    HorizontalAlignment="Stretch"
+                    Height="48"
+                    Margin="0,0,4,0"
+                    Padding="0"
+                    ToolTip.Tip="{Binding ActionStartLabel}">
+              <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                        Foreground="{DynamicResource TextOnAccentBrush}"
+                        Width="18" Height="18" />
+            </Button>
+
+            <Button Grid.Column="1"
+                    Classes="rem-soft"
+                    Command="{Binding ActionRunHeadlessCommand}"
+                    IsEnabled="{Binding ActionCanRunHeadless}"
+                    HorizontalAlignment="Stretch"
+                    Height="48"
+                    Margin="4,0,4,0"
+                    Padding="0"
+                    ToolTip.Tip="Run Headless (no UI)">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}"
+                        Width="18" Height="18" />
+            </Button>
+
+            <Button Grid.Column="2"
+                    Classes="rem-soft"
+                    Command="{Binding ActionPauseCommand}"
+                    IsEnabled="{Binding ActionCanPause}"
+                    HorizontalAlignment="Stretch"
+                    Height="48"
+                    Margin="4,0,4,0"
+                    Padding="0"
+                    ToolTip.Tip="Pause">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}"
+                        Width="18" Height="18" />
+            </Button>
+
+            <Button Grid.Column="3"
+                    Classes="rem-danger"
+                    Command="{Binding ActionKillCommand}"
+                    IsEnabled="{Binding ActionCanKill}"
+                    HorizontalAlignment="Stretch"
+                    Height="48"
+                    Margin="4,0,0,0"
+                    Padding="0"
+                    ToolTip.Tip="Kill (dispose)">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}"
+                        Foreground="{DynamicResource DangerFgBrush}"
+                        Width="18" Height="18" />
+            </Button>
+          </Grid>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- Card-Grid App Picker Popup -->
+    <Border IsVisible="{Binding IsAppPickerOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <Border Classes="rem-modal"
+              Width="560"
+              Padding="24"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center">
+        <Grid RowDefinitions="Auto,Auto,Auto">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ZIndex="0">
+            <StackPanel Spacing="3" Margin="0,0,92,0">
+              <TextBlock Text="Select Profile Apps"
+                         FontSize="19"
+                         FontWeight="SemiBold" />
+              <TextBlock Text="Click cards in the order you want them arranged on the hub"
+                         Classes="muted"
+                         FontSize="12" />
+            </StackPanel>
+
+            <Image Grid.Column="0"
+                   Grid.ColumnSpan="2"
+                   Source="{Binding PopupArtBitmap}"
+                   Height="70"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Bottom"
+                   Margin="0,-8,32,-16"
+                   IsHitTestVisible="False"
+                   IsVisible="{Binding HasPopupArt}" />
+
+            <Button Grid.Column="1"
+                    Classes="rem-icon"
+                    Command="{Binding CancelAppPickerCommand}"
+                    VerticalAlignment="Top"
+                    ZIndex="2">
+              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <Border Grid.Row="1"
+                  ZIndex="1"
+                  Background="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="0,1,0,0"
+                  Padding="0,12,0,0"
+                  Margin="0,12,0,14">
+            <ItemsControl ItemsSource="{Binding AvailablePickerApps}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:AppPickerItemViewModel">
+                  <Button Command="{Binding ToggleCommand}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          Margin="5"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          Cursor="Hand">
+                    <Border Classes="rem-card"
+                            Classes.selected="{Binding IsSelected}"
+                            Padding="14"
+                            Height="118">
+                      <Grid RowDefinitions="Auto,*">
+                        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+                          <Border Width="34" Height="34"
+                                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                                  Background="{Binding AccentBrush}">
+                            <PathIcon Data="{Binding IconGeometry}"
+                                      Width="16" Height="16"
+                                      Foreground="#FFFFFF"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                          </Border>
+
+                          <Border Grid.Column="2"
+                                  Width="24" Height="24"
+                                  CornerRadius="{DynamicResource PillCornerRadius}"
+                                  Background="{DynamicResource PrimaryAccentBrush}"
+                                  IsVisible="{Binding IsSelected}"
+                                  VerticalAlignment="Top">
+                            <TextBlock Text="{Binding SelectionOrder}"
+                                       Foreground="{DynamicResource TextOnAccentBrush}"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                          </Border>
+                        </Grid>
+
+                        <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Spacing="2">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="14"
+                                     FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Description}"
+                                     Classes="muted"
+                                     FontSize="11"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+
+          <StackPanel Grid.Row="2"
+                      ZIndex="1"
+                      Orientation="Horizontal"
+                      Spacing="10"
+                      HorizontalAlignment="Right">
+            <Button Classes="rem-btn"
+                    Command="{Binding CancelAppPickerCommand}"
+                    Content="Cancel"
+                    MinWidth="96" />
+            <Button Classes="rem-primary"
+                    Command="{Binding ConfirmAppPickerCommand}"
+                    Content="Save Apps"
+                    MinWidth="112" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+  </Grid>
+</UserControl>

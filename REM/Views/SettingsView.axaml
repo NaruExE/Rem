@@ -1,0 +1,593 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:models="using:REM.Models"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <Border Classes="rem-modal"
+          Width="780"
+          Height="550"
+          ClipToBounds="True">
+    <Grid ColumnDefinitions="188,*">
+
+      <!-- Left Navigation Rail -->
+      <Border Grid.Column="0"
+              Background="{DynamicResource SidebarBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,1,0"
+              Padding="14,18">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Row="0"
+                     Text="Settings"
+                     FontSize="17"
+                     FontWeight="SemiBold"
+                     Margin="8,0,0,16" />
+
+          <StackPanel Grid.Row="1" Spacing="4">
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsGeneralPage}"
+                    Command="{Binding SelectGeneralPageCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="14" Height="14" />
+                <TextBlock Text="General" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsAppearancePage}"
+                    Command="{Binding SelectAppearancePageCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Palette}" Width="14" Height="14" />
+                <TextBlock Text="Appearance" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsProfilesPage}"
+                    Command="{Binding SelectProfilesPageCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.User}" Width="14" Height="14" />
+                <TextBlock Text="Profiles" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsAssetsPage}"
+                    Command="{Binding SelectAssetsPageCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{x:Static svc:IconCatalog.Folder}" Width="14" Height="14" />
+                <TextBlock Text="Assets" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <Button Grid.Row="2"
+                  Classes="rem-btn"
+                  Command="{Binding CloseCommand}"
+                  Content="Close"
+                  HorizontalAlignment="Stretch" />
+        </Grid>
+      </Border>
+
+      <!-- Right Page Content -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="24,18,18,10">
+          <TextBlock Text="General" FontSize="18" FontWeight="SemiBold" IsVisible="{Binding IsGeneralPage}" />
+          <TextBlock Text="Appearance" FontSize="18" FontWeight="SemiBold" IsVisible="{Binding IsAppearancePage}" />
+          <TextBlock Text="Profiles" FontSize="18" FontWeight="SemiBold" IsVisible="{Binding IsProfilesPage}" />
+          <TextBlock Text="Custom Assets" FontSize="18" FontWeight="SemiBold" IsVisible="{Binding IsAssetsPage}" />
+
+          <Button Grid.Column="1"
+                  Classes="rem-icon"
+                  Command="{Binding CloseCommand}">
+            <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="15" Height="15" />
+          </Button>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="14" Margin="24,4,24,24">
+
+            <!-- PAGE 1: GENERAL -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsGeneralPage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="Skip Welcome Intro"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Open directly to Profiles on launch"
+                               Classes="muted"
+                               FontSize="12" />
+                  </StackPanel>
+
+                  <ToggleSwitch Grid.Column="1"
+                                IsChecked="{Binding SkipIntro}"
+                                OnContent="On"
+                                OffContent="Off"
+                                VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="Show App Status Bar"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Display the top running timer &amp; controls strip inside apps"
+                               Classes="muted"
+                               FontSize="12" />
+                  </StackPanel>
+
+                  <ToggleSwitch Grid.Column="1"
+                                IsChecked="{Binding ShowAppHeaderBar}"
+                                OnContent="On"
+                                OffContent="Off"
+                                VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="Minimize to System Tray on Close"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Keep headless apps alive in the Windows tray when closing the window"
+                               Classes="muted"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <ToggleSwitch Grid.Column="1"
+                                IsChecked="{Binding MinimizeToTray}"
+                                OnContent="On"
+                                OffContent="Off"
+                                VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2" Margin="0,0,12,0">
+                    <TextBlock Text="Start with Windows"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Launch REM automatically when you sign in"
+                               Classes="muted"
+                               FontSize="12" />
+                  </StackPanel>
+
+                  <ToggleSwitch Grid.Column="1"
+                                IsChecked="{Binding StartWithWindows}"
+                                OnContent="On"
+                                OffContent="Off"
+                                VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Welcome Voice Audio"
+                             FontSize="14"
+                             FontWeight="SemiBold" />
+
+                  <TextBlock Text="{Binding WelcomeAudioDisplay}"
+                             Classes="muted"
+                             FontSize="12"
+                             TextTrimming="CharacterEllipsis" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-primary"
+                            Command="{Binding ChooseAudioCommand}"
+                            Content="Choose Audio..."
+                            Padding="12,7"
+                            FontSize="12" />
+                    <Button Classes="rem-soft"
+                            Command="{Binding TogglePreviewAudioCommand}"
+                            Content="{Binding PreviewButtonText}" />
+                    <Button Classes="rem-danger"
+                            Command="{Binding ResetAudioCommand}"
+                            Content="Reset"
+                            IsVisible="{Binding HasCustomAudio}" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- Zero-RAM Disk Action Log -->
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Data="{x:Static svc:IconCatalog.FileText}" Width="14" Height="14" />
+                    <TextBlock Text="Action Log (Disk Only)"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
+                  </StackPanel>
+
+                  <TextBlock Text="{Binding LogFilePath}"
+                             Classes="muted"
+                             FontSize="11"
+                             TextWrapping="Wrap" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-soft"
+                            Command="{Binding OpenLogFileCommand}"
+                            Content="Open Log File" />
+                    <Button Classes="rem-danger"
+                            Command="{Binding ClearLogFileCommand}"
+                            Content="Clear Log" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- PAGE 2: APPEARANCE -->
+            <StackPanel Spacing="14" IsVisible="{Binding IsAppearancePage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="Theme / Mod"
+                                 FontSize="14"
+                                 FontWeight="SemiBold" />
+                      <TextBlock Text="Applies immediately without restarting"
+                                 Classes="muted"
+                                 FontSize="12" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                      <Button Classes="rem-soft"
+                              Command="{Binding OpenThemesFolderCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                          <PathIcon Data="{x:Static svc:IconCatalog.ExternalLink}" Width="12" Height="12" />
+                          <TextBlock Text="Open Folder" VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Button>
+                      <Button Classes="rem-soft"
+                              Command="{Binding ReloadThemesCommand}"
+                              Content="Reload Mods" />
+                    </StackPanel>
+                  </Grid>
+
+                  <ComboBox Classes="rem"
+                            ItemsSource="{Binding AvailableThemes}"
+                            SelectedItem="{Binding SelectedTheme}"
+                            HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate DataType="models:ThemeDescriptor">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+
+                  <TextBlock Text="{Binding ExternalThemesDirectory, StringFormat='External .axaml themes folder: {0}'}"
+                             Classes="muted"
+                             FontSize="11"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- PAGE 3: PROFILES -->
+            <StackPanel Spacing="14" IsVisible="{Binding IsProfilesPage}">
+              <!-- Profiles List -->
+              <StackPanel Spacing="10" IsVisible="{Binding !IsEditingProfile}">
+                <TextBlock Text="Select a profile to change its picture, name, PIN, or delete it."
+                           Classes="muted"
+                           FontSize="12" />
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="16"
+                        IsVisible="{Binding !HasAnyProfiles}">
+                  <TextBlock Text="No profiles created yet."
+                             Classes="muted"
+                             FontSize="13" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding ProfilesList}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SettingsProfileRowViewModel">
+                      <Button Command="{Binding EditCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              Margin="0,0,0,8"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Cursor="Hand">
+                        <Border Classes="rem-card" Padding="12,10">
+                          <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                            <Grid Width="36" Height="36" Margin="0,0,12,0">
+                              <Border Width="36" Height="36"
+                                      CornerRadius="999"
+                                      Background="{Binding AvatarBrush}"
+                                      IsVisible="{Binding !HasAvatar}">
+                                <TextBlock Text="{Binding Initials}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FFFFFF"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                              </Border>
+                              <Border Width="36" Height="36"
+                                      CornerRadius="999"
+                                      ClipToBounds="True"
+                                      IsVisible="{Binding HasAvatar}">
+                                <Image Source="{Binding AvatarBitmap}"
+                                       Stretch="UniformToFill" />
+                              </Border>
+                            </Grid>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+
+                            <PathIcon Grid.Column="2"
+                                      Data="{x:Static svc:IconCatalog.Lock}"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      Width="13" Height="13"
+                                      Margin="0,0,10,0"
+                                      IsVisible="{Binding HasPassword}" />
+
+                            <PathIcon Grid.Column="3"
+                                      Data="{x:Static svc:IconCatalog.ChevronRight}"
+                                      Foreground="{DynamicResource TextSecondaryBrush}"
+                                      Width="15" Height="15" />
+                          </Grid>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <!-- Selected Profile Editor -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsEditingProfile}">
+                <Button Classes="rem-soft"
+                        Command="{Binding BackToProfilesListCommand}"
+                        HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="14" Height="14" />
+                    <TextBlock Text="All Profiles" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <!-- Feedback Banner -->
+                <Border IsVisible="{Binding HasProfileFeedback}"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderStrongBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="12,8">
+                  <TextBlock Text="{Binding ProfileFeedbackMessage}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                </Border>
+
+                <!-- Avatar Section -->
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Grid Width="54" Height="54" Margin="0,0,14,0">
+                      <Border Width="54" Height="54"
+                              CornerRadius="999"
+                              Background="{Binding EditingProfileAvatarBrush}"
+                              IsVisible="{Binding !HasEditingProfileAvatar}">
+                        <TextBlock Text="{Binding EditingProfileInitials}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="#FFFFFF"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                      </Border>
+                      <Border Width="54" Height="54"
+                              CornerRadius="999"
+                              ClipToBounds="True"
+                              IsVisible="{Binding HasEditingProfileAvatar}">
+                        <Image Source="{Binding EditingProfileAvatarBitmap}"
+                               Stretch="UniformToFill" />
+                      </Border>
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                      <TextBlock Text="Profile Picture" FontSize="13" FontWeight="SemiBold" />
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="rem-soft"
+                                Command="{Binding ChangeEditingPfpCommand}"
+                                Content="Change PFP" />
+                        <Button Classes="rem-danger"
+                                Command="{Binding RemoveEditingPfpCommand}"
+                                Content="Remove"
+                                IsVisible="{Binding HasEditingProfileAvatar}" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <!-- Name Section -->
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Display Name" FontSize="13" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox Classes="rem"
+                               Text="{Binding EditingProfileName}"
+                               Margin="0,0,8,0" />
+                      <Button Grid.Column="1"
+                              Classes="rem-primary"
+                              Command="{Binding SaveEditingNameCommand}"
+                              Content="Save"
+                              Padding="14,8" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- PIN / Security Section -->
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <StackPanel Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Key}" Width="14" Height="14" />
+                      <TextBlock Text="PIN / Password" FontSize="13" FontWeight="SemiBold" />
+                    </StackPanel>
+
+                    <TextBox Classes="rem"
+                             Watermark="Current PIN / password (required)"
+                             PasswordChar="•"
+                             Text="{Binding EditingProfileCurrentPin}"
+                             IsVisible="{Binding EditingProfileHasPassword}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox Classes="rem"
+                               Watermark="New PIN (leave blank to remove)"
+                               PasswordChar="•"
+                               Text="{Binding EditingProfileNewPin}"
+                               Margin="0,0,8,0" />
+                      <Button Grid.Column="1"
+                              Classes="rem-soft"
+                              Command="{Binding UpdateEditingPinCommand}"
+                              Content="Update PIN" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <!-- Delete Section -->
+                <Border Background="{DynamicResource DangerBgBrush}"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="Delete Profile"
+                                 Foreground="{DynamicResource DangerFgBrush}"
+                                 FontSize="13"
+                                 FontWeight="SemiBold" />
+                      <TextBlock Text="Requires current PIN if protected"
+                                 Classes="muted"
+                                 FontSize="11" />
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Classes="rem-danger"
+                            Command="{Binding RequestDeleteProfileCommand}"
+                            Content="Delete..."
+                            IsVisible="{Binding !IsDeleteConfirming}" />
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="6"
+                                IsVisible="{Binding IsDeleteConfirming}">
+                      <Button Classes="rem-soft"
+                              Command="{Binding CancelDeleteProfileCommand}"
+                              Content="Cancel" />
+                      <Button Classes="rem-danger"
+                              Command="{Binding ConfirmDeleteProfileCommand}"
+                              Content="Confirm Delete" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+
+            <!-- PAGE 4: ASSETS -->
+            <StackPanel Spacing="14" IsVisible="{Binding IsAssetsPage}">
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Drop-in Rem PNG Slots"
+                             FontSize="14"
+                             FontWeight="SemiBold" />
+                  <TextBlock Text="Place custom PNGs in Assets\Images\ next to REM.exe or in the user folder below:"
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding CustomImagesDirectory}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,2">
+                    <Button Classes="rem-soft"
+                            Command="{Binding OpenImagesFolderCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ExternalLink}" Width="12" Height="12" />
+                        <TextBlock Text="Open Folder" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="rem-soft"
+                            Command="{Binding ReloadImagesCommand}">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="12" Height="12" />
+                        <TextBlock Text="Reload Images" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                  <TextBlock Text="• rem-icon.png — Window icon &amp; top-left emblem"
+                             Classes="muted"
+                             FontSize="12" />
+                  <TextBlock Text="• rem-welcome.png — Welcome Screen centerpiece"
+                             Classes="muted"
+                             FontSize="12" />
+                  <TextBlock Text="• rem-corner.png — Bottom-left sidebar artwork"
+                             Classes="muted"
+                             FontSize="12" />
+                  <TextBlock Text="• rem-popup.png — Bottom-left artwork inside popups (plus optional -error, -warning, -confirm, -info overrides)"
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mod="using:REM.Modules"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.ModulePlaceholderView"
+             x:DataType="mod:ModulePlaceholderViewModel">
+
+  <Grid RowDefinitions="Auto,*" Background="{DynamicResource AppBackgroundBrush}">
+    <!-- Hideable Top Module Status & Controls Bar -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding IsHeaderVisible}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="24,14">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="38" Height="38"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{Binding AccentBrush}">
+          <PathIcon Data="{Binding IconGeometry}"
+                    Width="18" Height="18"
+                    Foreground="#FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="1"
+                    Spacing="2"
+                    Margin="12,0,16,0"
+                    VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Name}"
+                       FontSize="17"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+              <TextBlock Text="{Binding StateLabel}"
+                         Classes="status-badge-text running-ui" />
+            </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusSummary}"
+                     Classes="muted"
+                     FontSize="12" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+          <Button Classes="rem-soft"
+                  Command="{Binding MinimizeToHeadlessCommand}"
+                  ToolTip.Tip="Close UI view while keeping background state alive">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              <TextBlock Text="Headless" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Classes="rem-soft"
+                  Command="{Binding PauseCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+              <TextBlock Text="Pause" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Classes="rem-danger"
+                  Command="{Binding KillCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}"
+                        Foreground="{DynamicResource DangerFgBrush}"
+                        Width="13" Height="13" />
+              <TextBlock Text="Kill"
+                         Foreground="{DynamicResource DangerFgBrush}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Classes="rem-btn"
+                  Command="{Binding BackToDashboardCommand}"
+                  Padding="12,7"
+                  FontSize="12">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+              <TextBlock Text="Hub" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button Classes="rem-icon"
+                  Command="{Binding ToggleHeaderCommand}"
+                  ToolTip.Tip="Hide status bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Main App Workspace + Discreet Show-Bar Button when Hidden -->
+    <Grid Grid.Row="1">
+      <ScrollViewer Padding="28">
+        <StackPanel Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding PlaceholderHeadline}"
+                       FontSize="20"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Description}"
+                       Classes="muted"
+                       FontSize="13" />
+          </StackPanel>
+
+          <Border Classes="rem-card" Padding="18">
+            <ItemsControl ItemsSource="{Binding PlaceholderItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border Background="{DynamicResource SurfaceAltBrush}"
+                          BorderBrush="{DynamicResource BorderSoftBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{DynamicResource ControlCornerRadius}"
+                          Padding="14,10"
+                          Margin="0,0,0,8">
+                    <TextBlock Text="{Binding}"
+                               FontSize="13"
+                               TextWrapping="Wrap" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Button Classes="rem-icon"
+              Command="{Binding ToggleHeaderCommand}"
+              IsVisible="{Binding !IsHeaderVisible}"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Margin="12"
+              ToolTip.Tip="Show status &amp; controls bar">
+        <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="15" Height="15" />
+      </Button>
+    </Grid>
+  </Grid>
+</UserControl>

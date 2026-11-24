@@ -1,0 +1,807 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:models="using:REM.Models"
+             xmlns:svc="using:REM.Services"
+             xmlns:controls="using:REM.Controls"
+             x:Class="REM.Views.MoviesTvView"
+             x:DataType="vm:MoviesTvViewModel">
+
+  <Grid Background="{DynamicResource AppBackgroundBrush}">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+      <!-- Hideable Top Module Status & Controls Bar (Hidden in Player & Fullscreen) -->
+      <Border Grid.Row="0"
+              IsVisible="{Binding ShowModuleHeader}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="20,10">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Border Width="34" Height="34"
+                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{Binding AccentBrush}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Width="16" Height="16"
+                      Foreground="#FFFFFF"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+          </Border>
+
+          <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+                <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}" ToolTip.Tip="Close WebView2 and minimize module">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+                <TextBlock Text="Headless" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+                <TextBlock Text="Pause" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+                <TextBlock Text="Hub" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+              <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Top Bar: Filter Pills + Search + Settings + Kill -->
+      <Border Grid.Row="1"
+              IsVisible="{Binding ShowTopBar}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="16,10">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+
+          <!-- Filter Pills -->
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,12,0">
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsHomeTab}"
+                    Command="{Binding SelectHomeTabCommand}"
+                    Content="Home"
+                    Padding="12,7"
+                    FontSize="12"
+                    FontWeight="SemiBold" />
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsMoviesTab}"
+                    Command="{Binding SelectMoviesTabCommand}"
+                    Content="Movies"
+                    Padding="12,7"
+                    FontSize="12"
+                    FontWeight="SemiBold" />
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsTvTab}"
+                    Command="{Binding SelectTvTabCommand}"
+                    Content="TV Shows"
+                    Padding="12,7"
+                    FontSize="12"
+                    FontWeight="SemiBold" />
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsWatchlistTab}"
+                    Command="{Binding SelectWatchlistTabCommand}"
+                    Content="Watchlist"
+                    Padding="12,7"
+                    FontSize="12"
+                    FontWeight="SemiBold" />
+          </StackPanel>
+
+          <!-- Search Box -->
+          <Grid Grid.Column="1" ColumnDefinitions="*,Auto" Margin="0,0,10,0">
+            <TextBox Grid.Column="0"
+                     Classes="rem"
+                     Watermark="Search movies &amp; TV shows on TMDB..."
+                     Text="{Binding SearchQuery}"
+                     Padding="11,7"
+                     FontSize="12"
+                     Margin="0,0,6,0">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <Button Grid.Column="1"
+                    Classes="rem-soft"
+                    Command="{Binding SearchCommand}"
+                    Padding="11,7"
+                    ToolTip.Tip="Search TMDB">
+              <PathIcon Data="{x:Static svc:IconCatalog.Search}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <!-- Toast / Settings Gear / Kill -->
+          <TextBlock Grid.Column="2"
+                     Text="{Binding StatusToast}"
+                     Foreground="{DynamicResource PrimaryAccentBrush}"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0"
+                     IsVisible="{Binding HasStatusToast}" />
+
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Button Classes="rem-soft"
+                    Command="{Binding OpenSettingsModalCommand}"
+                    Padding="9,7"
+                    ToolTip.Tip="TMDB &amp; Embed Settings">
+              <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="14" Height="14" />
+            </Button>
+
+            <Button Classes="rem-danger"
+                    Command="{Binding KillCommand}"
+                    Padding="11,7"
+                    ToolTip.Tip="Shut down WebView2, clear poster cache &amp; stop module">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+                <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Main Stage -->
+      <Grid Grid.Row="2">
+
+        <!-- 1. Browse / Home / Search / Watchlist View -->
+        <ScrollViewer IsVisible="{Binding IsBrowseView}" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="18" Margin="20,16,20,24">
+
+            <!-- Setup Prompt Banner when TMDB Bearer Token missing -->
+            <Border Classes="rem-card"
+                    IsVisible="{Binding NeedsConfiguration}"
+                    Padding="16,14">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,14,0">
+                  <TextBlock Text="TMDB Token Required" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Configure your TMDB v3 Read Access Token and Movie/TV embed URL templates in Settings to start browsing and watching."
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Classes="rem-primary"
+                        Command="{Binding OpenSettingsModalCommand}"
+                        Content="Open Settings"
+                        VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+
+            <!-- Continue Watching Horizontal Row (Home Tab Only) -->
+            <StackPanel Spacing="10" IsVisible="{Binding ShowContinueWatching}">
+              <TextBlock Text="Continue Watching" FontSize="15" FontWeight="SemiBold" />
+
+              <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding ContinueWatchingItems}" Margin="0,0,0,6">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="12" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:ContinueWatchingCardViewModel">
+                      <Border Classes="rem-card" Width="168" ClipToBounds="True">
+                        <Grid RowDefinitions="210,Auto">
+                          <Button Grid.Row="0"
+                                  Command="{Binding ResumePlayCommand}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="0"
+                                  Cursor="Hand"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch"
+                                  ToolTip.Tip="Click to jump straight into player">
+                            <Grid Background="{DynamicResource SurfaceAltBrush}">
+                              <Image Source="{Binding PosterBitmap}"
+                                     Stretch="UniformToFill"
+                                     IsVisible="{Binding HasPosterBitmap}" />
+                              <PathIcon Data="{x:Static svc:IconCatalog.MoviesTv}"
+                                        Width="28" Height="28"
+                                        Opacity="0.35"
+                                        IsVisible="{Binding !HasPosterBitmap}" />
+                              <Border Background="#CC0E0F12"
+                                      CornerRadius="5"
+                                      Padding="7,3"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Bottom"
+                                      Margin="8">
+                                <TextBlock Text="{Binding BadgeText}"
+                                           Foreground="#FFFFFF"
+                                           FontSize="10"
+                                           FontWeight="Bold" />
+                              </Border>
+                            </Grid>
+                          </Button>
+
+                          <!-- Remove & Play Info Footer -->
+                          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="9,7">
+                            <Button Grid.Column="0"
+                                    Command="{Binding OpenDetailsCommand}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    Cursor="Hand">
+                              <TextBlock Text="{Binding Title}"
+                                         FontSize="12"
+                                         FontWeight="SemiBold"
+                                         TextTrimming="CharacterEllipsis" />
+                            </Button>
+                            <Button Grid.Column="1"
+                                    Classes="rem-icon"
+                                    Command="{Binding RemoveCommand}"
+                                    Padding="3"
+                                    Margin="4,0,0,0"
+                                    ToolTip.Tip="Remove from Continue Watching">
+                              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="10" Height="10" />
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </StackPanel>
+
+            <!-- Trending / Catalog / Watchlist / Search Grid -->
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding SectionTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="Loading TMDB..."
+                           Classes="muted"
+                           FontSize="12"
+                           IsVisible="{Binding IsLoading}"
+                           VerticalAlignment="Center" />
+              </Grid>
+
+              <TextBlock Text="{Binding EmptyMessage}"
+                         Classes="muted"
+                         FontSize="12"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasEmptyMessage}" />
+
+              <ItemsControl ItemsSource="{Binding CatalogItems}" IsVisible="{Binding HasCatalogItems}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:MoviePosterCardViewModel">
+                    <Border Classes="rem-card"
+                            Width="166"
+                            Margin="0,0,12,14"
+                            ClipToBounds="True">
+                      <Grid RowDefinitions="236,Auto">
+
+                        <!-- Poster Area (click -> details) + Rating & Bookmark Badges -->
+                        <Grid Grid.Row="0" Background="{DynamicResource SurfaceAltBrush}">
+                          <Button Command="{Binding OpenDetailsCommand}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="0"
+                                  Cursor="Hand"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Stretch">
+                            <Grid>
+                              <Image Source="{Binding PosterBitmap}"
+                                     Stretch="UniformToFill"
+                                     IsVisible="{Binding HasPosterBitmap}" />
+                              <PathIcon Data="{x:Static svc:IconCatalog.MoviesTv}"
+                                        Width="30" Height="30"
+                                        Opacity="0.32"
+                                        IsVisible="{Binding !HasPosterBitmap}" />
+                            </Grid>
+                          </Button>
+
+                          <!-- Rating Pill Top-Left -->
+                          <Border IsVisible="{Binding HasRating}"
+                                  Background="#CC0E0F12"
+                                  CornerRadius="5"
+                                  Padding="6,3"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Top"
+                                  Margin="7"
+                                  IsHitTestVisible="False">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                              <PathIcon Data="{x:Static svc:IconCatalog.Star}" Width="10" Height="10" Foreground="#F5C518" />
+                              <TextBlock Text="{Binding RatingText}" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold" />
+                            </StackPanel>
+                          </Border>
+
+                          <!-- Watchlist Bookmark Toggle Top-Right -->
+                          <Button Command="{Binding ToggleWatchlistCommand}"
+                                  Background="#CC0E0F12"
+                                  BorderThickness="0"
+                                  CornerRadius="6"
+                                  Padding="6"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Top"
+                                  Margin="7"
+                                  Cursor="Hand"
+                                  ToolTip.Tip="Toggle Watchlist">
+                            <Grid>
+                              <PathIcon Data="{x:Static svc:IconCatalog.Bookmark}"
+                                        Width="13" Height="13"
+                                        Foreground="#E50914"
+                                        IsVisible="{Binding IsInWatchlist}" />
+                              <PathIcon Data="{x:Static svc:IconCatalog.BookmarkOutline}"
+                                        Width="13" Height="13"
+                                        Foreground="#FFFFFF"
+                                        IsVisible="{Binding !IsInWatchlist}" />
+                            </Grid>
+                          </Button>
+                        </Grid>
+
+                        <!-- Metadata Footer -->
+                        <Button Grid.Row="1"
+                                Command="{Binding OpenDetailsCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="9,8"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                Cursor="Hand">
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding Title}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Grid ColumnDefinitions="*,Auto">
+                              <TextBlock Grid.Column="0"
+                                         Text="{Binding Year}"
+                                         Classes="muted"
+                                         FontSize="11"
+                                         IsVisible="{Binding HasYear}"
+                                         VerticalAlignment="Center" />
+                              <Border Grid.Column="1"
+                                      Background="{DynamicResource SurfaceAltBrush}"
+                                      CornerRadius="4"
+                                      Padding="5,2">
+                                <TextBlock Text="{Binding MediaTypeBadge}"
+                                           Classes="muted"
+                                           FontSize="9"
+                                           FontWeight="Bold" />
+                              </Border>
+                            </Grid>
+                          </StackPanel>
+                        </Button>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <Button Classes="rem-soft"
+                      Command="{Binding ShowMoreCatalogCommand}"
+                      Content="{Binding ShowMoreCatalogLabel}"
+                      IsVisible="{Binding CanShowMoreCatalog}"
+                      IsEnabled="{Binding !IsLoadingMoreCatalog}"
+                      HorizontalAlignment="Center"
+                      Padding="24,9"
+                      Margin="0,6,0,10" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- 2. Detail / Episode Picker View -->
+        <ScrollViewer IsVisible="{Binding IsDetailView}" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="16" Margin="20,16,20,28">
+
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <Button Grid.Column="0"
+                      Classes="rem-soft"
+                      Command="{Binding BackToBrowseCommand}"
+                      Padding="11,7">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="13" Height="13" />
+                  <TextBlock Text="Back" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <TextBlock Grid.Column="2"
+                         Text="Loading details..."
+                         Classes="muted"
+                         FontSize="12"
+                         IsVisible="{Binding IsLoading}"
+                         VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Backdrop Hero Header -->
+            <Border CornerRadius="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="1"
+                    MinHeight="230"
+                    ClipToBounds="True">
+              <Grid>
+                <Image Source="{Binding DetailBackdropBitmap}"
+                       Stretch="UniformToFill"
+                       Opacity="0.32"
+                       IsVisible="{Binding HasDetailBackdrop}" />
+                <Border>
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+                      <GradientStop Color="#E80E0F12" Offset="0" />
+                      <GradientStop Color="#B813151A" Offset="0.65" />
+                      <GradientStop Color="#9013151A" Offset="1" />
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+
+                <Grid ColumnDefinitions="Auto,*" Margin="20">
+                  <Border Grid.Column="0"
+                          Width="136" Height="204"
+                          CornerRadius="8"
+                          Background="{DynamicResource SurfaceAltBrush}"
+                          BorderBrush="{DynamicResource BorderStrongBrush}"
+                          BorderThickness="1"
+                          ClipToBounds="True"
+                          Margin="0,0,20,0">
+                    <Grid>
+                      <Image Source="{Binding DetailPosterBitmap}"
+                             Stretch="UniformToFill"
+                             IsVisible="{Binding HasDetailPoster}" />
+                      <PathIcon Data="{x:Static svc:IconCatalog.MoviesTv}"
+                                Width="32" Height="32"
+                                Opacity="0.35"
+                                IsVisible="{Binding !HasDetailPoster}" />
+                    </Grid>
+                  </Border>
+
+                  <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DetailTitle}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding DetailTagline}"
+                               Classes="muted"
+                               FontSize="12"
+                               FontStyle="Italic"
+                               IsVisible="{Binding HasDetailTagline}"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Border Background="{DynamicResource SurfaceAltBrush}"
+                              BorderBrush="{DynamicResource BorderSoftBrush}"
+                              BorderThickness="1"
+                              CornerRadius="5"
+                              Padding="7,3">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Star}" Width="11" Height="11" Foreground="#F5C518" />
+                          <TextBlock Text="{Binding DetailRatingText}" FontSize="11" FontWeight="Bold" />
+                        </StackPanel>
+                      </Border>
+                      <TextBlock Text="{Binding DetailMetaLine}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding DetailGenresText}" Classes="muted" FontSize="12" />
+
+                    <TextBlock Text="{Binding DetailOverview}"
+                               FontSize="13"
+                               LineHeight="19"
+                               TextWrapping="Wrap"
+                               MaxWidth="760"
+                               HorizontalAlignment="Left"
+                               Margin="0,2,0,4" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Button Classes="rem-primary"
+                              Command="{Binding PlayDetailCommand}"
+                              Background="#E50914"
+                              Foreground="#FFFFFF"
+                              Padding="16,9">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="#FFFFFF" Width="13" Height="13" />
+                          <TextBlock Text="{Binding DetailPlayButtonText}" Foreground="#FFFFFF" FontWeight="Bold" VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Button>
+
+                      <Button Classes="rem-soft"
+                              Command="{Binding ToggleDetailWatchlistCommand}"
+                              Padding="14,9">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Bookmark}"
+                                    Foreground="#E50914"
+                                    Width="13" Height="13"
+                                    IsVisible="{Binding DetailIsInWatchlist}" />
+                          <PathIcon Data="{x:Static svc:IconCatalog.BookmarkOutline}"
+                                    Width="13" Height="13"
+                                    IsVisible="{Binding !DetailIsInWatchlist}" />
+                          <TextBlock Text="Watchlist" VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                  </StackPanel>
+                </Grid>
+              </Grid>
+            </Border>
+
+            <!-- TV Season Selector & Episodes List -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsDetailTvShow}">
+              <Grid ColumnDefinitions="Auto,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0"
+                           Text="Episodes"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Margin="0,0,14,0" />
+                <ComboBox Grid.Column="1"
+                          Classes="rem"
+                          ItemsSource="{Binding DetailSeasons}"
+                          SelectedItem="{Binding SelectedSeason}"
+                          MinWidth="190"
+                          HorizontalAlignment="Left">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:TmdbSeasonSummary">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding DetailEpisodes}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:TvEpisodeRowViewModel">
+                    <Border Classes="rem-card"
+                            Classes.selected="{Binding IsLastWatched}"
+                            Padding="10"
+                            Margin="0,0,0,8">
+                      <Button Command="{Binding PlayEpisodeCommand}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Cursor="Hand">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                          <Border Grid.Column="0"
+                                  Width="160" Height="90"
+                                  CornerRadius="6"
+                                  Background="{DynamicResource SurfaceAltBrush}"
+                                  ClipToBounds="True"
+                                  Margin="0,0,14,0">
+                            <Grid>
+                              <Image Source="{Binding StillBitmap}"
+                                     Stretch="UniformToFill"
+                                     IsVisible="{Binding HasStillBitmap}" />
+                              <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                                        Width="20" Height="20"
+                                        Opacity="0.45"
+                                        IsVisible="{Binding !HasStillBitmap}" />
+                            </Grid>
+                          </Border>
+
+                          <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                              <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="4" Padding="6,2">
+                                <TextBlock Text="{Binding EpisodeCode}" FontSize="11" FontWeight="Bold" />
+                              </Border>
+                              <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                              <Border Background="#2BE50914"
+                                      CornerRadius="4"
+                                      Padding="6,2"
+                                      IsVisible="{Binding IsLastWatched}">
+                                <TextBlock Text="Last Watched" Foreground="#FF6B73" FontSize="10" FontWeight="Bold" />
+                              </Border>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding MetaText}"
+                                       Classes="muted"
+                                       FontSize="11"
+                                       IsVisible="{Binding HasMetaText}" />
+
+                            <TextBlock Text="{Binding Overview}"
+                                       Classes="muted"
+                                       FontSize="12"
+                                       MaxLines="2"
+                                       TextTrimming="CharacterEllipsis"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding HasOverview}" />
+                          </StackPanel>
+
+                          <PathIcon Grid.Column="2"
+                                    Data="{x:Static svc:IconCatalog.Play}"
+                                    Width="16" Height="16"
+                                    Opacity="0.7"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,8,0" />
+                        </Grid>
+                      </Button>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- 3. Hardened WebView2 Player View (Slim Top Bar strictly ABOVE WebView2Host — ZERO overlays) -->
+        <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsPlayerView}">
+          <Border Grid.Row="0"
+                  Background="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="0,0,0,1"
+                  Padding="14,7">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+              <Button Grid.Column="0"
+                      Classes="rem-soft"
+                      Command="{Binding ClosePlayerCommand}"
+                      Padding="10,6"
+                      Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                  <TextBlock Text="Back" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,12,0">
+                <TextBlock Text="{Binding PlayerTitle}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding PlayerEpisodeLabel}"
+                           Classes="muted"
+                           FontSize="12"
+                           IsVisible="{Binding HasPlayerEpisodeLabel}"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+
+              <Border Grid.Column="2"
+                      IsVisible="{Binding HasBlockedAttempts}"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="5"
+                      Padding="8,3"
+                      Margin="0,0,10,0"
+                      VerticalAlignment="Center">
+                <TextBlock Text="{Binding PlayerBlockedCountText}" Classes="muted" FontSize="10" FontWeight="SemiBold" />
+              </Border>
+
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button Classes="rem-soft"
+                        Command="{Binding PrevEpisodeCommand}"
+                        IsVisible="{Binding IsPlayerTvShow}"
+                        IsEnabled="{Binding CanGoPrevEpisode}"
+                        Content="Prev Ep"
+                        Padding="9,6"
+                        FontSize="11" />
+                <Button Classes="rem-soft"
+                        Command="{Binding NextEpisodeCommand}"
+                        IsVisible="{Binding IsPlayerTvShow}"
+                        IsEnabled="{Binding CanGoNextEpisode}"
+                        Content="Next Ep"
+                        Padding="9,6"
+                        FontSize="11" />
+                <Button Classes="rem-soft"
+                        Command="{Binding ReloadPlayerCommand}"
+                        Padding="8,6"
+                        ToolTip.Tip="Reload Embed">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="13" Height="13" />
+                </Button>
+                <Button Classes="rem-soft"
+                        Command="{Binding ToggleFullscreenCommand}"
+                        Padding="8,6"
+                        ToolTip.Tip="Toggle Fullscreen">
+                  <Grid>
+                    <PathIcon Data="{x:Static svc:IconCatalog.ExitFullscreen}" Width="13" Height="13" IsVisible="{Binding IsFullscreen}" />
+                    <PathIcon Data="{x:Static svc:IconCatalog.Fullscreen}" Width="13" Height="13" IsVisible="{Binding !IsFullscreen}" />
+                  </Grid>
+                </Button>
+                <Button Classes="rem-danger"
+                        Command="{Binding KillCommand}"
+                        Padding="9,6"
+                        FontSize="11"
+                        ToolTip.Tip="Shut down WebView2 &amp; dispose module">
+                  <StackPanel Orientation="Horizontal" Spacing="5">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="12" Height="12" />
+                    <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- Dedicated Native WebView2 Host — zero XAML controls overlaid -->
+          <Border Grid.Row="1" Background="#000000" ClipToBounds="True">
+            <controls:WebView2Host x:Name="EmbedWebView"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch" />
+          </Border>
+        </Grid>
+      </Grid>
+    </Grid>
+
+    <!-- Movies & TV Settings Modal Overlay -->
+    <Border IsVisible="{Binding IsSettingsOpen}"
+            Classes="modal-overlay"
+            Padding="24">
+      <Border Classes="rem-modal"
+              MaxWidth="560"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Padding="22">
+        <StackPanel Spacing="14">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="2">
+              <TextBlock Text="Movies &amp; TV Settings" FontSize="17" FontWeight="SemiBold" />
+              <TextBlock Text="Stored locally in REM's SQLite settings database." Classes="muted" FontSize="12" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="rem-icon" Command="{Binding CloseSettingsModalCommand}">
+              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <Border IsVisible="{Binding HasSettingsHint}"
+                  Background="#22E50914"
+                  BorderBrush="#55E50914"
+                  BorderThickness="1"
+                  CornerRadius="7"
+                  Padding="10,8">
+            <TextBlock Text="{Binding SettingsHintMessage}" FontSize="12" TextWrapping="Wrap" />
+          </Border>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="TMDB Read Access Token (v3 Bearer)" FontSize="12" FontWeight="SemiBold" />
+            <TextBox Classes="rem"
+                     Watermark="eyJhbGciOiJIUzI1NiJ9..."
+                     Text="{Binding SettingsTmdbToken}" />
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Movie Embed URL Template" FontSize="12" FontWeight="SemiBold" />
+            <TextBox Classes="rem"
+                     Watermark="https://example.com/embed/movie/{tmdb_id}"
+                     Text="{Binding SettingsMovieTemplate}" />
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="TV Embed URL Template" FontSize="12" FontWeight="SemiBold" />
+            <TextBox Classes="rem"
+                     Watermark="https://example.com/embed/tv/{tmdb_id}/{season}/{episode}"
+                     Text="{Binding SettingsTvTemplate}" />
+          </StackPanel>
+
+          <Border Background="{DynamicResource SurfaceAltBrush}"
+                  BorderBrush="{DynamicResource BorderSoftBrush}"
+                  BorderThickness="1"
+                  CornerRadius="7"
+                  Padding="10,8">
+            <TextBlock Text="Supported placeholders: {imdb_id}, {tmdb_id}, {season}, {episode}"
+                       Classes="muted"
+                       FontSize="11"
+                       TextWrapping="Wrap" />
+          </Border>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Extra Blocked Ad / Popunder Domains (optional)" FontSize="12" FontWeight="SemiBold" />
+            <TextBox Classes="rem"
+                     Watermark="Comma or newline separated domains..."
+                     Text="{Binding SettingsExtraBlockedDomains}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+            <Button Classes="rem-soft" Command="{Binding CloseSettingsModalCommand}" Content="Cancel" />
+            <Button Classes="rem-primary" Command="{Binding SaveSettingsCommand}" Content="Save Settings" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Grid>
+</UserControl>

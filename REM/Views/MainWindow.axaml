@@ -1,0 +1,130 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:REM.ViewModels"
+        xmlns:views="using:REM.Views"
+        xmlns:svc="using:REM.Services"
+        x:Class="REM.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="REM · RAM Efficient Manager"
+        Width="1120"
+        Height="736"
+        MinWidth="860"
+        MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        Background="{DynamicResource AppBackgroundBrush}">
+
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:WelcomeViewModel">
+      <views:WelcomeView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ProfilesViewModel">
+      <views:ProfilesView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DashboardViewModel">
+      <views:DashboardView />
+    </DataTemplate>
+  </Window.DataTemplates>
+
+  <Border x:Name="RootFrame" Padding="0">
+    <Grid RowDefinitions="Auto,*">
+
+      <!-- Custom Discord-Style Themed Titlebar -->
+      <Border Grid.Row="0"
+              x:Name="CustomTitleBar"
+              Height="32"
+              Background="{DynamicResource SidebarBackgroundBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              PointerPressed="OnTitleBarPointerPressed">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0"
+                      Orientation="Horizontal"
+                      Spacing="8"
+                      Margin="12,0,0,0"
+                      VerticalAlignment="Center"
+                      IsHitTestVisible="False">
+            <Border Width="16" Height="16"
+                    CornerRadius="4"
+                    ClipToBounds="True"
+                    IsVisible="{Binding HasTitleBarIcon}">
+              <Image Source="{Binding TitleBarIconBitmap}" Stretch="UniformToFill" />
+            </Border>
+            <TextBlock Text="REM"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Classes="muted"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- Drag Area Spacer -->
+          <Border Grid.Column="1" Background="Transparent" />
+
+          <!-- Window Controls -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
+            <Button Classes="titlebar-btn"
+                    Click="OnMinimizeClick"
+                    ToolTip.Tip="Minimize">
+              <PathIcon Data="{x:Static svc:IconCatalog.WindowMinimize}" Width="11" Height="11" />
+            </Button>
+
+            <Button Classes="titlebar-btn"
+                    Click="OnMaximizeRestoreClick"
+                    ToolTip.Tip="Maximize / Restore">
+              <PathIcon x:Name="MaximizeRestoreIcon"
+                        Data="{x:Static svc:IconCatalog.WindowMaximize}"
+                        Width="11" Height="11" />
+            </Button>
+
+            <Button Classes="titlebar-close"
+                    Click="OnCloseClick"
+                    ToolTip.Tip="Close">
+              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="11" Height="11" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- App Content + Overlays -->
+      <Grid Grid.Row="1">
+        <TransitioningContentControl Content="{Binding CurrentScreen}">
+          <TransitioningContentControl.PageTransition>
+            <CrossFade Duration="0:0:0.12" />
+          </TransitioningContentControl.PageTransition>
+        </TransitioningContentControl>
+
+        <!-- Global Settings Overlay -->
+        <Border IsVisible="{Binding IsSettingsOpen}"
+                Classes="modal-overlay"
+                Padding="24">
+          <ContentControl Content="{Binding ActiveSettings}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+            <ContentControl.DataTemplates>
+              <DataTemplate DataType="vm:SettingsViewModel">
+                <views:SettingsView />
+              </DataTemplate>
+            </ContentControl.DataTemplates>
+          </ContentControl>
+        </Border>
+
+        <!-- Global Case-Specific Dialog Overlay -->
+        <Border IsVisible="{Binding DialogService.IsDialogOpen}"
+                Classes="modal-overlay"
+                Padding="24">
+          <ContentControl Content="{Binding DialogService.ActiveDialog}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+            <ContentControl.DataTemplates>
+              <DataTemplate DataType="svc:DialogViewModel">
+                <views:DialogOverlayView />
+              </DataTemplate>
+            </ContentControl.DataTemplates>
+          </ContentControl>
+        </Border>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

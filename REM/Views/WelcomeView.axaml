@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             x:Class="REM.Views.WelcomeView"
+             x:DataType="vm:WelcomeViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="StackPanel.welcome-hero">
+      <Style.Animations>
+        <Animation Duration="0:0:0.75" FillMode="Forward" Easing="CubicEaseOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.0" />
+            <Setter Property="TranslateTransform.Y" Value="12" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1.0" />
+            <Setter Property="TranslateTransform.Y" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid Background="Transparent" PointerPressed="OnRootPointerPressed" Cursor="Hand">
+    <StackPanel Classes="welcome-hero"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="14"
+                IsHitTestVisible="False">
+
+      <!-- Drop-in rem-welcome.png slot -->
+      <Border Width="96" Height="96"
+              CornerRadius="{DynamicResource CardCornerRadius}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="1"
+              ClipToBounds="True"
+              HorizontalAlignment="Center"
+              IsVisible="{Binding HasWelcomeImage}">
+        <Image Source="{Binding WelcomeImage}"
+               Stretch="UniformToFill" />
+      </Border>
+
+      <!-- Minimal fallback emblem when rem-welcome.png is absent -->
+      <Border Width="64" Height="64"
+              CornerRadius="{DynamicResource CardCornerRadius}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderStrongBrush}"
+              BorderThickness="1"
+              HorizontalAlignment="Center"
+              IsVisible="{Binding !HasWelcomeImage}">
+        <TextBlock Text="REM"
+                   FontSize="16"
+                   FontWeight="Bold"
+                   LetterSpacing="2"
+                   Foreground="{DynamicResource PrimaryAccentBrush}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+      </Border>
+
+      <TextBlock Text="{Binding GreetingText}"
+                 FontSize="36"
+                 FontWeight="Bold"
+                 HorizontalAlignment="Center"
+                 TextAlignment="Center" />
+
+      <TextBlock Text="{Binding SubtitleText}"
+                 Classes="muted"
+                 FontSize="14"
+                 HorizontalAlignment="Center"
+                 TextAlignment="Center" />
+
+      <TextBlock Text="{Binding HintText}"
+                 Classes="muted"
+                 FontSize="12"
+                 Margin="0,10,0,0"
+                 Opacity="0.7"
+                 HorizontalAlignment="Center" />
+    </StackPanel>
+  </Grid>
+</UserControl>
