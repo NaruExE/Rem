@@ -57,6 +57,7 @@ public sealed class WebView2Host : NativeControlHost
     private CoreWebView2Environment? _environment;
     private CoreWebView2Controller? _controller;
     private CoreWebView2? _core;
+    private uint _registeredBrowserPid;
     private string? _allowedEmbedHost;
     private string? _pendingAllowedNavigationUri;
     private string? _pendingUrlBeforeHandle;
@@ -259,6 +260,14 @@ public sealed class WebView2Host : NativeControlHost
             _controller = await _environment.CreateCoreWebView2ControllerAsync(_hostHwnd).ConfigureAwait(true);
             _core = _controller.CoreWebView2;
 
+            if (_registeredBrowserPid != 0)
+            {
+                MemoryTrimService.UnregisterTrackedRootPid(_registeredBrowserPid);
+            }
+
+            _registeredBrowserPid = _core.BrowserProcessId;
+            MemoryTrimService.RegisterTrackedRootPid(_registeredBrowserPid);
+
             ConfigureHardenedSettings(_core.Settings);
             _core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
 
@@ -437,6 +446,12 @@ public sealed class WebView2Host : NativeControlHost
         _core = null;
         _controller = null;
         _environment = null;
+
+        if (_registeredBrowserPid != 0)
+        {
+            MemoryTrimService.UnregisterTrackedRootPid(_registeredBrowserPid);
+            _registeredBrowserPid = 0;
+        }
 
         if (core is not null)
         {
