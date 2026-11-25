@@ -219,7 +219,7 @@
           </Button>
         </Grid>
 
-        <ProgressBar IsIndeterminate="True"
+        <ProgressBar IsIndeterminate="{Binding IsBusy}"
                      Height="2"
                      IsVisible="{Binding IsBusy}"
                      Foreground="{DynamicResource PrimaryAccentBrush}" />
@@ -334,6 +334,11 @@
                             Padding="0"
                             Margin="0,0,12,12"
                             Cursor="Hand">
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Download..." Command="{Binding DownloadCommand}" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
                       <Border Classes="rem-card" Width="248" Padding="12">
                         <StackPanel Spacing="8">
                           <Border CornerRadius="{DynamicResource TabCornerRadius}"
@@ -410,6 +415,11 @@
                             Padding="0"
                             Margin="0,0,12,12"
                             Cursor="Hand">
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Download..." Command="{Binding DownloadCommand}" />
+                        </ContextMenu>
+                      </Button.ContextMenu>
                       <Border Classes="rem-card" Width="248" Padding="12">
                         <StackPanel Spacing="8">
                           <Border CornerRadius="{DynamicResource TabCornerRadius}"

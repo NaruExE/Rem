@@ -8,7 +8,7 @@ using REM.Views;
 
 namespace REM.Modules;
 
-public sealed class SpotifyModule : IAppModule
+public sealed class SpotifyModule : IAppModule, IHeaderConfigurableModule, ICloseableModule
 {
     private readonly DatabaseService _database;
     private readonly ActionLogService _actionLog;
@@ -18,10 +18,13 @@ public sealed class SpotifyModule : IAppModule
     private readonly SpotifyWebApiService _webApi;
     private readonly LastFmService _lastFm;
     private readonly LrclibService _lrclib;
+    private readonly IDownloadDispatcher? _downloadDispatcher;
+    private readonly RemMixGeneratorService _mixGenerator;
 
     private Control? _activeView;
     private SpotifyViewModel? _activeViewModel;
     private ModuleState _state = ModuleState.Stopped;
+    private string _lastStatusKey = string.Empty;
     private bool _disposed;
 
     public SpotifyModule(
@@ -32,7 +35,8 @@ public sealed class SpotifyModule : IAppModule
         SpotifySoloistService soloist,
         SpotifyWebApiService webApi,
         LastFmService lastFm,
-        LrclibService lrclib)
+        LrclibService lrclib,
+        IDownloadDispatcher? downloadDispatcher = null)
     {
         _database = database;
         _actionLog = actionLog;
@@ -42,6 +46,8 @@ public sealed class SpotifyModule : IAppModule
         _webApi = webApi;
         _lastFm = lastFm;
         _lrclib = lrclib;
+        _downloadDispatcher = downloadDispatcher;
+        _mixGenerator = new RemMixGeneratorService(database, webApi, lastFm, actionLog);
 
         _soloist.StatusChanged += OnSoloistStatusChanged;
         StatusSummary = "Stopped · Spotify Soloist unloaded";
@@ -84,6 +90,8 @@ public sealed class SpotifyModule : IAppModule
                 _webApi,
                 _lastFm,
                 _lrclib,
+                _mixGenerator,
+                _downloadDispatcher,
                 () => OpenModuleSettingsRequested?.Invoke(Id));
 
             _activeViewModel.IsHeaderVisible = _database.LoadSettings().ShowAppHeaderBar;
@@ -150,10 +158,11 @@ public sealed class SpotifyModule : IAppModule
         _soloist.StatusChanged -= OnSoloistStatusChanged;
         DisposeView();
         _soloist.StopDaemon();
+        _mixGenerator.Dispose();
         GC.SuppressFinalize(this);
     }
 
-    internal void SetHeaderVisibility(bool visible)
+    public void SetHeaderVisibility(bool visible)
     {
         if (_activeViewModel is not null)
         {
@@ -161,12 +170,17 @@ public sealed class SpotifyModule : IAppModule
         }
     }
 
-    internal void AttachCloseCallback(Action closeToDashboard)
+    public void AttachCloseCallback(Action closeToDashboard)
     {
         if (_activeViewModel is not null)
         {
             _activeViewModel.RequestCloseToDashboard = closeToDashboard;
         }
+    }
+
+    internal void OnViewLeft()
+    {
+        _activeViewModel?.ReleaseTransientAssets();
     }
 
     private async Task ResumeIfPausedForHeadlessAsync()
@@ -185,6 +199,13 @@ public sealed class SpotifyModule : IAppModule
             return;
         }
 
+        var key = $"{(int)_state}|{status?.Stopped}|{status?.Paused}|{status?.Track?.Uri}|{status?.Track?.Name}";
+        if (string.Equals(key, _lastStatusKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastStatusKey = key;
         Dispatcher.UIThread.Post(UpdateStatusSummary);
     }
 
@@ -203,9 +224,10 @@ public sealed class SpotifyModule : IAppModule
     {
         var status = _soloist.CurrentStatus;
         var track = status?.Track;
+        string nextSummary;
         if (track is null || status is { Stopped: true })
         {
-            StatusSummary = _state switch
+            nextSummary = _state switch
             {
                 ModuleState.RunningUI => _soloist.IsDaemonRunning ? "Soloist active · Ready to play" : "Starting Spotify Soloist...",
                 ModuleState.RunningHeadless => "Headless · Soloist idle",
@@ -218,9 +240,15 @@ public sealed class SpotifyModule : IAppModule
             var mode = _state == ModuleState.RunningHeadless ? "Headless" :
                        _state == ModuleState.Paused || status?.Paused == true ? "Paused" :
                        "Playing";
-            StatusSummary = $"{mode} · {track.Name} — {track.ArtistsDisplay}";
+            nextSummary = $"{mode} · {track.Name} — {track.ArtistsDisplay}";
         }
 
+        if (string.Equals(StatusSummary, nextSummary, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StatusSummary = nextSummary;
         StatusSummaryChanged?.Invoke(this, EventArgs.Empty);
     }
 

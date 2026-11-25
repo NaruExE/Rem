@@ -249,6 +249,13 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     private long _lastDownloadedBytes;
     private long _lastBandwidthTimestamp;
     private int _statsTickCount;
+    private bool _lastBandwidthWasZero;
+    private long _lastTooltipTotalBytes = -1;
+    private string _lastWorkingSetText = string.Empty;
+    private int _lastManagedTenths = -1;
+    private double _lastTrimBaselineMb;
+    private DateTimeOffset _lastAutoTrimUtc = DateTimeOffset.UtcNow;
+    private bool _isWindowActive = true;
     private bool _disposed;
 
     public DashboardViewModel(
@@ -285,11 +292,27 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _onNavigatedToModule = onNavigatedToModule;
 
         _currentProcess = Process.GetCurrentProcess();
+        MiniPlayer = new HeadlessMiniPlayerViewModel(
+            _moduleManager,
+            _soloist,
+            _spotifyWebApi,
+            _moduleManager.AudioEngine,
+            _moduleManager.VideoPlayerModule.Engine,
+            moduleId =>
+            {
+                var target = _moduleManager.GetModule(moduleId);
+                if (target is not null)
+                {
+                    OpenModuleUi(target);
+                }
+            });
+
         ProfileAvatarBrush = new SolidColorBrush(Color.Parse(profile.AvatarColor));
         BrandIconBitmap = _imageAssets.GetBrandImage("rem-icon.png", 64);
         CornerArtBitmap = _imageAssets.GetBrandImage("rem-corner.png", 280);
         PopupArtBitmap = _imageAssets.GetPopupImage();
         ProfileAvatarBitmap = _imageAssets.LoadScaledBitmap(profile.AvatarPath, 64);
+        RefreshWallpaper();
         ProfileName = profile.Name;
         ProfileInitials = profile.Initials;
 
@@ -300,11 +323,11 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _lastDownloadedBytes = BandwidthMonitor.GetTotalDownloadedBytes();
         _lastBandwidthTimestamp = Stopwatch.GetTimestamp();
 
-        _ramTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _ramTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _ramTimer.Tick += (_, _) =>
         {
             UpdateBandwidthStats();
-            if (++_statsTickCount >= 3)
+            if (++_statsTickCount >= 2)
             {
                 _statsTickCount = 0;
                 UpdateRamStats();
@@ -320,6 +343,36 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     public long ProfileId => _profile.Id;
     public IBrush ProfileAvatarBrush { get; }
+    public HeadlessMiniPlayerViewModel MiniPlayer { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWallpaper))]
+    private Bitmap? _wallpaperBitmap;
+
+    public bool HasWallpaper => WallpaperBitmap is not null;
+
+    [ObservableProperty]
+    private double _wallpaperDimOpacity = 0.35;
+
+    public void RefreshWallpaper()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var settings = _database.LoadSettings();
+        WallpaperDimOpacity = Math.Clamp(settings.WallpaperDim, 0.0, 0.85);
+        var nextBmp = _isWindowActive
+            ? _imageAssets.LoadWallpaperBitmap(settings.WallpaperPath, settings.WallpaperSoftBlur)
+            : null;
+        var prev = WallpaperBitmap;
+        WallpaperBitmap = nextBmp;
+        if (!ReferenceEquals(prev, nextBmp))
+        {
+            prev?.Dispose();
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HubTitle))]
@@ -489,24 +542,12 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             placeholderVm.IsHeaderVisible = showHeader;
         }
 
-        if (_moduleManager.GetModule("audio-streamer") is AudioStreamerModule audioModule)
+        foreach (var module in _moduleManager.AllModules)
         {
-            audioModule.SetHeaderVisibility(showHeader);
-        }
-
-        if (_moduleManager.GetModule("video-player") is VideoPlayerModule videoModule)
-        {
-            videoModule.SetHeaderVisibility(showHeader);
-        }
-
-        if (_moduleManager.GetModule("stream-watcher") is StreamWatcherModule streamWatcherModule)
-        {
-            streamWatcherModule.SetHeaderVisibility(showHeader);
-        }
-
-        if (_moduleManager.GetModule("movies-tv") is MoviesTvModule moviesModule)
-        {
-            moviesModule.SetHeaderVisibility(showHeader);
+            if (module is IHeaderConfigurableModule configurable)
+            {
+                configurable.SetHeaderVisibility(showHeader);
+            }
         }
     }
 
@@ -577,7 +618,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
         ActiveModuleSettings.Dispose();
         ActiveModuleSettings = null;
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
+        ScheduleTrimAndRefreshStats();
     }
 
     [RelayCommand]
@@ -752,12 +793,20 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         CloseModuleSettings();
         ActiveModuleView = null;
         _activeModuleId = null;
+        MiniPlayer.Dispose();
         DisposeTiles();
         DisposeSidebarTabs();
 
+        WallpaperBitmap?.Dispose();
+        WallpaperBitmap = null;
         ProfileAvatarBitmap?.Dispose();
         ProfileAvatarBitmap = null;
         _currentProcess.Dispose();
+    }
+
+    partial void OnActiveModuleViewChanged(Control? value)
+    {
+        MiniPlayer?.SetActiveOpenModuleId(value is null ? null : _activeModuleId);
     }
 
     private void LoadAssignedApps(bool promptIfEmpty)
@@ -833,82 +882,108 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     private void OpenModuleUi(IAppModule module)
     {
-        if (_activeModuleId is not null && !string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal))
+        try
         {
-            _moduleManager.NotifyModuleViewLeft(_activeModuleId);
-        }
+            if (_activeModuleId is not null && !string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal))
+            {
+                _moduleManager.NotifyModuleViewLeft(_activeModuleId);
+            }
 
-        var view = _moduleManager.OpenModuleUI(module.Id);
-        if (view.DataContext is ModulePlaceholderViewModel placeholderVm)
-        {
-            placeholderVm.RequestCloseToDashboard = ShowHub;
-            placeholderVm.IsHeaderVisible = _database.LoadSettings().ShowAppHeaderBar;
-        }
-        else if (module is AudioStreamerModule audioModule)
-        {
-            audioModule.AttachCloseCallback(ShowHub);
-            audioModule.SetHeaderVisibility(_database.LoadSettings().ShowAppHeaderBar);
-        }
-        else if (module is SpotifyModule spotifyModule)
-        {
-            spotifyModule.AttachCloseCallback(ShowHub);
-            spotifyModule.SetHeaderVisibility(_database.LoadSettings().ShowAppHeaderBar);
-        }
-        else if (module is VideoPlayerModule videoModule)
-        {
-            videoModule.AttachCloseCallback(ShowHub);
-            videoModule.AttachFullscreenCallback(isFullscreen => IsImmersiveFullscreen = isFullscreen);
-            videoModule.SetHeaderVisibility(_database.LoadSettings().ShowAppHeaderBar);
-        }
-        else if (module is StreamWatcherModule streamWatcherModule)
-        {
-            streamWatcherModule.AttachCloseCallback(ShowHub);
-            streamWatcherModule.AttachFullscreenCallback(isFullscreen => IsImmersiveFullscreen = isFullscreen);
-            streamWatcherModule.SetHeaderVisibility(_database.LoadSettings().ShowAppHeaderBar);
-        }
-        else if (module is MoviesTvModule moviesModule)
-        {
-            moviesModule.AttachCloseCallback(ShowHub);
-            moviesModule.AttachFullscreenCallback(isFullscreen => IsImmersiveFullscreen = isFullscreen);
-            moviesModule.SetHeaderVisibility(_database.LoadSettings().ShowAppHeaderBar);
-        }
+            var view = _moduleManager.OpenModuleUI(module.Id);
+            var showHeader = _database.LoadSettings().ShowAppHeaderBar;
 
-        _activeModuleId = module.Id;
-        ActiveModuleView = view;
-        SyncSidebarTabs();
-        RefreshActiveModuleFlag();
-        UpdateRamStats();
-        _actionLog.Log("Module", $"'{module.Name}' -> Running (UI).");
-        _onNavigatedToModule(module.Id);
+            if (view.DataContext is ModulePlaceholderViewModel placeholderVm)
+            {
+                placeholderVm.RequestCloseToDashboard = ShowHub;
+                placeholderVm.IsHeaderVisible = showHeader;
+            }
+
+            if (module is ICloseableModule closeable)
+            {
+                closeable.AttachCloseCallback(ShowHub);
+            }
+
+            if (module is IFullscreenModule fullscreenable)
+            {
+                fullscreenable.AttachFullscreenCallback(isFullscreen => IsImmersiveFullscreen = isFullscreen);
+            }
+
+            if (module is IHeaderConfigurableModule headerConfigurable)
+            {
+                headerConfigurable.SetHeaderVisibility(showHeader);
+            }
+
+            if (module is IVlcPlayMediaModule vlcPlayRequester)
+            {
+                vlcPlayRequester.PlayCompletedMediaInVlcRequested = filePath =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var vlcModule = _moduleManager.VideoPlayerModule;
+                        OpenModuleUi(vlcModule);
+                        _ = vlcModule.PlayFileInUiAsync(filePath);
+                    });
+                };
+            }
+
+            if (module is IVlcOpenUiModule vlcOpenRequester)
+            {
+                vlcOpenRequester.OpenVlcUiRequested = () =>
+                {
+                    Dispatcher.UIThread.Post(() => OpenModuleUi(_moduleManager.VideoPlayerModule));
+                };
+            }
+
+            _activeModuleId = module.Id;
+            ActiveModuleView = view;
+            SyncSidebarTabs();
+            RefreshActiveModuleFlag();
+            UpdateRamStats();
+            _actionLog.Log("Module", $"'{module.Name}' -> Running (UI).");
+            _onNavigatedToModule(module.Id);
+        }
+        catch (Exception ex)
+        {
+            _actionLog.Log("Error", $"Failed to open '{module.Name}': {ex.Message}");
+            _ = _dialogService.ShowErrorAsync("Module Error", $"Could not open '{module.Name}'.", ex.Message);
+        }
     }
 
     private void RunModuleHeadless(IAppModule module)
     {
-        if (module is VideoPlayerModule videoModule &&
-            !string.IsNullOrWhiteSpace(videoModule.Engine.CurrentSourceUrl))
+        try
         {
-            _ = RunVideoHeadlessWithPromptAsync(videoModule);
-            return;
-        }
+            if (module is VideoPlayerModule videoModule &&
+                !string.IsNullOrWhiteSpace(videoModule.Engine.CurrentSourceUrl))
+            {
+                _ = RunVideoHeadlessWithPromptAsync(videoModule);
+                return;
+            }
 
-        if (module is StreamWatcherModule streamWatcherModule &&
-            !string.IsNullOrWhiteSpace(streamWatcherModule.Engine.CurrentSourceUrl))
-        {
-            _ = RunStreamWatcherHeadlessWithPromptAsync(streamWatcherModule);
-            return;
-        }
+            if (module is StreamWatcherModule streamWatcherModule &&
+                !string.IsNullOrWhiteSpace(streamWatcherModule.Engine.CurrentSourceUrl))
+            {
+                _ = RunStreamWatcherHeadlessWithPromptAsync(streamWatcherModule);
+                return;
+            }
 
-        var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
-        CloseActiveViewIfFor(module.Id);
-        _moduleManager.RunModuleHeadless(module.Id);
-        SyncSidebarTabs();
-        RefreshActiveModuleFlag();
-        UpdateRamStats();
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
-        _actionLog.Log("Module", $"'{module.Name}' -> Running (Headless).");
-        if (wasOpen)
+            var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
+            CloseActiveViewIfFor(module.Id);
+            _moduleManager.RunModuleHeadless(module.Id);
+            SyncSidebarTabs();
+            RefreshActiveModuleFlag();
+            UpdateRamStats();
+            ScheduleTrimAndRefreshStats();
+            _actionLog.Log("Module", $"'{module.Name}' -> Running (Headless).");
+            if (wasOpen)
+            {
+                _onNavigatedToHub();
+            }
+        }
+        catch (Exception ex)
         {
-            _onNavigatedToHub();
+            _actionLog.Log("Error", $"Failed to run '{module.Name}' headless: {ex.Message}");
+            _ = _dialogService.ShowErrorAsync("Module Error", $"Could not switch '{module.Name}' to Headless mode.", ex.Message);
         }
     }
 
@@ -925,7 +1000,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         SyncSidebarTabs();
         RefreshActiveModuleFlag();
         UpdateRamStats();
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
+        ScheduleTrimAndRefreshStats();
         _actionLog.Log("Module", $"'{videoModule.Name}' -> Running (Headless).");
         if (wasOpen)
         {
@@ -946,7 +1021,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         SyncSidebarTabs();
         RefreshActiveModuleFlag();
         UpdateRamStats();
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
+        ScheduleTrimAndRefreshStats();
         _actionLog.Log("Module", $"'{streamWatcherModule.Name}' -> Running (Headless).");
         if (wasOpen)
         {
@@ -956,33 +1031,47 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
     private void PauseModule(IAppModule module)
     {
-        var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
-        CloseActiveViewIfFor(module.Id);
-        _moduleManager.PauseModule(module.Id);
-        SyncSidebarTabs();
-        RefreshActiveModuleFlag();
-        UpdateRamStats();
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
-        _actionLog.Log("Module", $"'{module.Name}' -> Paused.");
-        if (wasOpen)
+        try
         {
-            _onNavigatedToHub();
+            var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
+            CloseActiveViewIfFor(module.Id);
+            _moduleManager.PauseModule(module.Id);
+            SyncSidebarTabs();
+            RefreshActiveModuleFlag();
+            UpdateRamStats();
+            ScheduleTrimAndRefreshStats();
+            _actionLog.Log("Module", $"'{module.Name}' -> Paused.");
+            if (wasOpen)
+            {
+                _onNavigatedToHub();
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionLog.Log("Error", $"Failed to pause '{module.Name}': {ex.Message}");
         }
     }
 
     private void KillModule(IAppModule module)
     {
-        var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
-        CloseActiveViewIfFor(module.Id);
-        _moduleManager.KillModule(module.Id);
-        SyncSidebarTabs();
-        RefreshActiveModuleFlag();
-        UpdateRamStats();
-        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
-        _actionLog.Log("Module", $"'{module.Name}' -> Killed (Stopped).");
-        if (wasOpen)
+        try
         {
-            _onNavigatedToHub();
+            var wasOpen = string.Equals(_activeModuleId, module.Id, StringComparison.Ordinal);
+            CloseActiveViewIfFor(module.Id);
+            _moduleManager.KillModule(module.Id);
+            SyncSidebarTabs();
+            RefreshActiveModuleFlag();
+            UpdateRamStats();
+            ScheduleTrimAndRefreshStats();
+            _actionLog.Log("Module", $"'{module.Name}' -> Killed (Stopped).");
+            if (wasOpen)
+            {
+                _onNavigatedToHub();
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionLog.Log("Error", $"Failed to kill '{module.Name}': {ex.Message}");
         }
     }
 
@@ -1033,7 +1122,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         if (args.State != ModuleState.RunningUI)
         {
             CloseActiveViewIfFor(args.ModuleId);
-            MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(UpdateRamStats));
+            ScheduleTrimAndRefreshStats();
         }
 
         SyncSidebarTabs();
@@ -1095,6 +1184,43 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         HasAnyActiveModule = _moduleManager.AllModules.Any(m => m.State != ModuleState.Stopped);
     }
 
+    public void SetWindowActive(bool isVisibleAndNotMinimized)
+    {
+        if (_disposed || _isWindowActive == isVisibleAndNotMinimized)
+        {
+            return;
+        }
+
+        _isWindowActive = isVisibleAndNotMinimized;
+        if (!isVisibleAndNotMinimized)
+        {
+            _ramTimer.Stop();
+            var prevWp = WallpaperBitmap;
+            WallpaperBitmap = null;
+            prevWp?.Dispose();
+            ScheduleTrimAndRefreshStats();
+        }
+        else
+        {
+            RefreshWallpaper();
+            UpdateBandwidthStats();
+            UpdateRamStats();
+            if (!_ramTimer.IsEnabled)
+            {
+                _ramTimer.Start();
+            }
+        }
+    }
+
+    private void ScheduleTrimAndRefreshStats()
+    {
+        MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(() =>
+        {
+            _lastTrimBaselineMb = 0;
+            UpdateRamStats();
+        }));
+    }
+
     private void UpdateBandwidthStats()
     {
         if (_disposed)
@@ -1114,6 +1240,14 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _lastDownloadedBytes = totalBytes;
         _lastBandwidthTimestamp = now;
 
+        if (deltaBytes == 0 && _lastBandwidthWasZero && totalBytes == _lastTooltipTotalBytes)
+        {
+            return;
+        }
+
+        _lastBandwidthWasZero = rate < 1;
+        _lastTooltipTotalBytes = totalBytes;
+
         BandwidthText = $"↓ {BandwidthMonitor.FormatRate(rate)}";
         BandwidthCompactText = BandwidthMonitor.FormatCompactRate(rate);
         BandwidthTooltip = $"Download speed: {BandwidthMonitor.FormatRate(rate)} · {BandwidthMonitor.FormatTotal(totalBytes)}";
@@ -1126,9 +1260,40 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var (activeMb, commitMb, managedMb) = MemoryTrimService.ReadMemoryMetrics(_currentProcess);
-        WorkingSetText = $"{activeMb:F1} MB";
-        WorkingSetTooltip = $"Active RAM (Task Manager): {activeMb:F1} MB · Managed Heap: {managedMb:F1} MB · Virtual Commit: {commitMb:F1} MB";
+        var (remActiveMb, remCommitMb, managedMb) = MemoryTrimService.ReadMemoryMetrics(_currentProcess);
+        var (childActiveMb, childCommitMb, childBreakdown) = MemoryTrimService.ReadChildProcessMetrics();
+        var totalActiveMb = remActiveMb + childActiveMb;
+        var totalCommitMb = remCommitMb + childCommitMb;
+
+        var activeText = $"{totalActiveMb:F1} MB";
+        var managedTenths = (int)Math.Round(managedMb * 10);
+
+        if (!string.Equals(_lastWorkingSetText, activeText, StringComparison.Ordinal) ||
+            managedTenths != _lastManagedTenths)
+        {
+            _lastWorkingSetText = activeText;
+            _lastManagedTenths = managedTenths;
+            WorkingSetText = activeText;
+            WorkingSetTooltip = string.IsNullOrWhiteSpace(childBreakdown)
+                ? $"Total Active RAM: {totalActiveMb:F1} MB (REM only) · Managed Heap: {managedMb:F1} MB · Private Commit: {totalCommitMb:F1} MB"
+                : $"Total Active RAM: {totalActiveMb:F1} MB (REM: {remActiveMb:F1} MB · {childBreakdown}) · Managed Heap: {managedMb:F1} MB · Total Commit: {totalCommitMb:F1} MB";
+        }
+
+        if (_lastTrimBaselineMb <= 0 || remActiveMb < _lastTrimBaselineMb)
+        {
+            _lastTrimBaselineMb = remActiveMb;
+        }
+        else if (ActiveModuleView is null &&
+                 remActiveMb >= _lastTrimBaselineMb + 18.0 &&
+                 (DateTimeOffset.UtcNow - _lastAutoTrimUtc) >= TimeSpan.FromMinutes(2))
+        {
+            _lastAutoTrimUtc = DateTimeOffset.UtcNow;
+            MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(() =>
+            {
+                _lastTrimBaselineMb = 0;
+                UpdateRamStats();
+            }), trimOsWorkingSet: false);
+        }
     }
 
     private void DisposeTiles()

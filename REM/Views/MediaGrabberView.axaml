@@ -1,0 +1,507 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.MediaGrabberView"
+             x:DataType="vm:MediaGrabberViewModel">
+
+  <Grid Background="{DynamicResource AppBackgroundBrush}">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+      <!-- Row 0: Hideable Top Module Header -->
+      <Border Grid.Row="0"
+              IsVisible="{Binding IsHeaderVisible}"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="20,10">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Border Width="34" Height="34"
+                  CornerRadius="{DynamicResource ControlCornerRadius}"
+                  Background="{Binding AccentBrush}">
+            <PathIcon Data="{Binding IconGeometry}"
+                      Width="16" Height="16"
+                      Foreground="#FFFFFF"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center" />
+          </Border>
+
+          <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+                <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}" ToolTip.Tip="Detach UI &amp; keep downloads running in background">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+                <TextBlock Text="Headless" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+                <TextBlock Text="Pause" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-danger" Command="{Binding KillCommand}" ToolTip.Tip="Cancel downloads &amp; shut down yt-dlp / aria2c">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+                <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+                <TextBlock Text="Hub" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+              <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Row 1: Top Grab Bar + Batch Paste -->
+      <Border Grid.Row="1"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="18,12">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBox Grid.Column="0"
+                     Classes="rem"
+                     Watermark="Paste YouTube, Twitch, TikTok, direct file URL, or magnet:? link..."
+                     Text="{Binding UrlInput}"
+                     Margin="0,0,6,0">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding GrabCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+
+            <Button Grid.Column="1"
+                    Classes="rem-icon"
+                    Command="{Binding PasteClipboardCommand}"
+                    ToolTip.Tip="Paste URL from clipboard"
+                    Margin="0,0,8,0">
+              <PathIcon Data="{x:Static svc:IconCatalog.ClipboardPaste}" Width="15" Height="15" />
+            </Button>
+
+            <ComboBox Grid.Column="2"
+                      Classes="rem"
+                      ItemsSource="{Binding EngineOptions}"
+                      SelectedItem="{Binding SelectedEngine}"
+                      MinWidth="88"
+                      Margin="0,0,6,0"
+                      ToolTip.Tip="Download engine (Auto detects yt-dlp vs aria2c)">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:DownloadEngineOption">
+                  <TextBlock Text="{Binding Label}" FontSize="12" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <ComboBox Grid.Column="3"
+                      Classes="rem"
+                      ItemsSource="{Binding FormatPresets}"
+                      SelectedItem="{Binding SelectedFormatPreset}"
+                      MinWidth="112"
+                      Margin="0,0,8,0"
+                      ToolTip.Tip="Format or quality preset" />
+
+            <Button Grid.Column="4"
+                    Classes="rem-primary"
+                    Command="{Binding GrabCommand}"
+                    Padding="16,8"
+                    Margin="0,0,6,0">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{x:Static svc:IconCatalog.Download}" Foreground="{DynamicResource TextOnAccentBrush}" Width="14" Height="14" />
+                <TextBlock Text="Grab" Foreground="{DynamicResource TextOnAccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="5"
+                    Classes="sidebar-tab"
+                    Classes.active="{Binding IsBatchPasteOpen}"
+                    Command="{Binding ToggleBatchPasteCommand}"
+                    Content="Batch"
+                    Padding="11,8"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Margin="0,0,6,0"
+                    ToolTip.Tip="Paste multiple URLs at once" />
+
+            <Button Grid.Column="6"
+                    Classes="rem-icon"
+                    Command="{Binding OpenSettingsCommand}"
+                    ToolTip.Tip="Media Grabber Settings (folder, binaries, concurrency, update yt-dlp)"
+                    Margin="0,0,2,0">
+              <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
+            </Button>
+
+            <Button Grid.Column="7"
+                    Classes="rem-icon"
+                    Command="{Binding ToggleHeaderCommand}"
+                    IsVisible="{Binding !IsHeaderVisible}"
+                    ToolTip.Tip="Show status &amp; lifecycle bar">
+              <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="15" Height="15" />
+            </Button>
+          </Grid>
+
+          <!-- Collapsible Batch Paste Box -->
+          <Border Classes="rem-card" Padding="12" IsVisible="{Binding IsBatchPasteOpen}">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Top">
+              <TextBox Grid.Column="0"
+                       Classes="rem"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       Height="84"
+                       Watermark="Paste multiple URLs, one per line..."
+                       Text="{Binding BatchUrlsText}"
+                       Margin="0,0,10,0" />
+              <StackPanel Grid.Column="1" Spacing="6">
+                <Button Classes="rem-primary"
+                        Command="{Binding GrabBatchCommand}"
+                        Content="Grab All"
+                        Padding="16,8"
+                        HorizontalAlignment="Stretch" />
+                <Button Classes="rem-soft"
+                        Command="{Binding ToggleBatchPasteCommand}"
+                        Content="Close"
+                        Padding="12,6"
+                        HorizontalAlignment="Stretch" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Row 2: Filter Tabs + Download Cards -->
+      <Grid Grid.Row="2" RowDefinitions="Auto,*" Margin="20,14">
+
+        <!-- Filter Tabs + Clear Completed -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsActiveTab}"
+                    Command="{Binding SelectActiveTabCommand}"
+                    Padding="12,7">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="Active Queue" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Border CornerRadius="999" Background="{DynamicResource PrimaryAccentBrush}" Padding="6,1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding ActiveCount}" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="10" FontWeight="Bold" />
+                </Border>
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsCompletedTab}"
+                    Command="{Binding SelectCompletedTabCommand}"
+                    Padding="12,7">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="Completed" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding CompletedCount, StringFormat='({0})'}" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Button Classes="sidebar-tab"
+                    Classes.active="{Binding IsFailedTab}"
+                    Command="{Binding SelectFailedTabCommand}"
+                    Padding="12,7">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="Failed" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding FailedCount, StringFormat='({0})'}" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <Button Grid.Column="1"
+                  Classes="rem-soft"
+                  Command="{Binding ClearCompletedCommand}"
+                  Content="Clear Completed"
+                  Padding="12,7"
+                  FontSize="12" />
+        </Grid>
+
+        <!-- Job Cards List -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10">
+            <Border Classes="rem-card" Padding="24" IsVisible="{Binding IsFilteredListEmpty}">
+              <StackPanel Spacing="4" HorizontalAlignment="Center">
+                <TextBlock Text="Nothing in this view yet." FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="Paste a video/stream/file URL above and hit Grab, or right-click any YouTube card in Audio Streamer / Stream Watcher."
+                           Classes="muted" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" />
+              </StackPanel>
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding FilteredJobs}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:MediaGrabberJobItemViewModel">
+                  <Border Classes="rem-card" Padding="14,12" Margin="0,0,0,8">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,14,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Grid.Column="0"
+                                     Text="{Binding Title}"
+                                     FontSize="13.5"
+                                     FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding Url}" />
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <Border CornerRadius="{DynamicResource TabCornerRadius}" Background="{DynamicResource SurfaceAltBrush}" Padding="7,2">
+                              <TextBlock Text="{Binding EngineLabel}" Classes="muted" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                            <Border CornerRadius="{DynamicResource TabCornerRadius}" Background="{DynamicResource SurfaceAltBrush}" Padding="7,2">
+                              <TextBlock Text="{Binding FormatPreset}" Classes="muted" FontSize="10" FontWeight="SemiBold" />
+                            </Border>
+                            <Border CornerRadius="{DynamicResource TabCornerRadius}" Background="{DynamicResource SurfaceAltBrush}" Padding="7,2">
+                              <TextBlock Text="{Binding StatusLabel}" Foreground="{DynamicResource PrimaryAccentBrush}" FontSize="10" FontWeight="Bold" />
+                            </Border>
+                          </StackPanel>
+                        </Grid>
+
+                        <ProgressBar Minimum="0"
+                                     Maximum="100"
+                                     Value="{Binding ProgressPercent}"
+                                     IsVisible="{Binding ShowProgress}"
+                                     Height="5"
+                                     CornerRadius="3"
+                                     Foreground="#10B981"
+                                     Background="{DynamicResource BorderSoftBrush}" />
+
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Grid.Column="0"
+                                     Text="{Binding Url}"
+                                     Classes="muted"
+                                     FontSize="11"
+                                     TextTrimming="CharacterEllipsis"
+                                     Margin="0,0,10,0" />
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding MetricsSummary}"
+                                     Classes="muted"
+                                     FontSize="11"
+                                     FontWeight="SemiBold" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   Foreground="{DynamicResource DangerFgBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding HasError}" />
+                      </StackPanel>
+
+                      <!-- Card Action Buttons -->
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Button Classes="rem-soft"
+                                Command="{Binding PauseCommand}"
+                                IsVisible="{Binding CanPause}"
+                                Padding="9,6"
+                                ToolTip.Tip="Pause aria2 download">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="12" Height="12" />
+                        </Button>
+
+                        <Button Classes="rem-soft"
+                                Command="{Binding ResumeCommand}"
+                                IsVisible="{Binding CanResume}"
+                                Padding="9,6"
+                                ToolTip.Tip="Resume aria2 download">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Play}" Width="12" Height="12" />
+                        </Button>
+
+                        <Button Classes="rem-danger"
+                                Command="{Binding CancelCommand}"
+                                IsVisible="{Binding CanCancel}"
+                                Padding="9,6"
+                                ToolTip.Tip="Cancel &amp; clean partial files">
+                          <PathIcon Data="{x:Static svc:IconCatalog.Close}" Foreground="{DynamicResource DangerFgBrush}" Width="12" Height="12" />
+                        </Button>
+
+                        <Button Classes="rem-soft"
+                                Command="{Binding RetryCommand}"
+                                IsVisible="{Binding CanRetry}"
+                                Padding="10,6"
+                                ToolTip.Tip="Retry download">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <PathIcon Data="{x:Static svc:IconCatalog.Retry}" Width="12" Height="12" />
+                            <TextBlock Text="Retry" FontSize="11" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Button>
+
+                        <Button Classes="rem-soft"
+                                Command="{Binding OpenFolderCommand}"
+                                IsVisible="{Binding CanOpenFolder}"
+                                Padding="10,6"
+                                ToolTip.Tip="Reveal file in Windows Explorer">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <PathIcon Data="{x:Static svc:IconCatalog.FolderOpen}" Width="13" Height="13" />
+                            <TextBlock Text="Open Folder" FontSize="11" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Button>
+
+                        <Button Classes="rem-primary"
+                                Command="{Binding PlayInRemCommand}"
+                                IsVisible="{Binding CanPlayInRem}"
+                                Padding="10,6"
+                                ToolTip.Tip="Play downloaded media in VLC Video Player module">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="11" Height="11" />
+                            <TextBlock Text="Play in REM" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- Row 3: Bottom Status Strip -->
+      <Border Grid.Row="3"
+              Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource BorderSoftBrush}"
+              BorderThickness="0,1,0,0"
+              Padding="18,9">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding TotalSpeedDisplay}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource PrimaryAccentBrush}"
+                     VerticalAlignment="Center"
+                     Margin="0,0,12,0" />
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding ActiveCountSummary}"
+                     Classes="muted"
+                     FontSize="12"
+                     VerticalAlignment="Center"
+                     Margin="0,0,14,0" />
+
+          <TextBlock Grid.Column="2"
+                     Text="{Binding StatusNotice}"
+                     Classes="muted"
+                     FontSize="12"
+                     IsVisible="{Binding HasStatusNotice}"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+
+          <Button Grid.Column="3"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="4,2"
+                  Cursor="Hand"
+                  Command="{Binding OpenDownloadFolderCommand}"
+                  ToolTip.Tip="Open default download folder">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.FolderOpen}" Width="13" Height="13" Opacity="0.75" />
+              <TextBlock Text="{Binding DownloadFolderPath}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="360" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Settings Modal Overlay -->
+    <Border Background="#99000000"
+            IsVisible="{Binding IsSettingsOpen}">
+      <Border Classes="rem-modal"
+              Width="580"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Padding="22">
+        <StackPanel Spacing="14">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Media Grabber Settings" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Classes="rem-icon" Command="{Binding CloseSettingsCommand}">
+              <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <!-- Default Download Folder -->
+          <StackPanel Spacing="4">
+            <TextBlock Text="Default Download Folder" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Classes="rem" Text="{Binding SettingsDownloadFolder}" Margin="0,0,8,0" />
+              <Button Grid.Column="1" Classes="rem-soft" Command="{Binding BrowseDownloadFolderCommand}" Content="Browse..." />
+            </Grid>
+          </StackPanel>
+
+          <!-- Concurrency & Connections -->
+          <Grid ColumnDefinitions="*,*">
+            <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+              <TextBlock Text="Max Concurrent yt-dlp (1–8)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+              <NumericUpDown Minimum="1" Maximum="8" Value="{Binding SettingsMaxConcurrent}" FormatString="0" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4" Margin="8,0,0,0">
+              <TextBlock Text="aria2c Connections / Split (1–16)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+              <NumericUpDown Minimum="1" Maximum="16" Value="{Binding SettingsAria2Connections}" FormatString="0" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Binary Overrides -->
+          <StackPanel Spacing="4">
+            <TextBlock Text="yt-dlp.exe Path (leave blank for auto-managed)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+            <TextBox Classes="rem" Watermark="Auto (%LocalAppData%\REM\Tools\yt-dlp.exe)" Text="{Binding SettingsYtDlpPath}" />
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="aria2c.exe Path (leave blank for auto-managed)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Classes="rem" Watermark="Auto-downloads to %LocalAppData%\REM\Tools\aria2c.exe when needed" Text="{Binding SettingsAria2cPath}" Margin="0,0,8,0" />
+              <Button Grid.Column="1" Classes="rem-soft" Command="{Binding BrowseAria2cCommand}" Content="Browse..." />
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="ffmpeg.exe Path (leave blank for auto-managed)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Classes="rem" Watermark="Auto-downloads ffmpeg + ffprobe to %LocalAppData%\REM\Tools\ when needed" Text="{Binding SettingsFfmpegPath}" Margin="0,0,8,0" />
+              <Button Grid.Column="1" Classes="rem-soft" Command="{Binding BrowseFfmpegCommand}" Content="Browse..." />
+            </Grid>
+          </StackPanel>
+
+          <!-- One-click yt-dlp Update -->
+          <Border Classes="rem-card" Padding="10">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Keep yt-dlp up to date for YouTube/Twitch extractors"
+                           Classes="muted"
+                           FontSize="11.5"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Classes="rem-soft"
+                        Command="{Binding UpdateYtDlpCommand}"
+                        IsEnabled="{Binding !IsUpdatingYtDlp}"
+                        Content="Update yt-dlp"
+                        Padding="12,6"
+                        FontSize="12" />
+              </Grid>
+              <TextBlock Text="{Binding YtDlpUpdateOutput}"
+                         Classes="muted"
+                         FontSize="11"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasYtDlpUpdateOutput}" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Classes="rem-soft" Command="{Binding CloseSettingsCommand}" Content="Cancel" />
+            <Button Classes="rem-primary" Command="{Binding SaveSettingsCommand}" Content="Save Settings" Padding="16,8" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Grid>
+</UserControl>

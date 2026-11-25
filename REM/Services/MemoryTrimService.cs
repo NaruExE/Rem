@@ -50,34 +50,113 @@ public static class MemoryTrimService
         out ProcessMemoryCountersEx2 ppsmemCounters,
         uint cb);
 
+    private static readonly (string ProcessName, string Label)[] ChildProcessDescriptors =
+    [
+        ("soloist", "Soloist"),
+        ("msedgewebview2", "WebView2"),
+        ("aria2c", "aria2c"),
+        ("ffmpeg", "FFmpeg"),
+        ("ffprobe", "FFprobe"),
+        ("cloudflared", "Cloudflared")
+    ];
+
     public static (double ActiveRamMb, double CommitMb, double ManagedMb) ReadMemoryMetrics(Process process)
     {
-        process.Refresh();
-        var commitMb = process.PrivateMemorySize64 / (1024.0 * 1024.0);
         var managedMb = GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0);
-        double activeRamMb = process.WorkingSet64 / (1024.0 * 1024.0);
+        var (activeMb, commitMb) = ReadProcessMemoryPair(process, allowRefreshFallback: true);
+        return (activeMb, commitMb, managedMb);
+    }
 
+    public static (double TotalChildActiveMb, double TotalChildCommitMb, string Breakdown) ReadChildProcessMetrics()
+    {
+        double totalActive = 0;
+        double totalCommit = 0;
+        List<string>? parts = null;
+
+        foreach (var (procName, label) in ChildProcessDescriptors)
+        {
+            Process[] procs;
+            try
+            {
+                procs = Process.GetProcessesByName(procName);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (procs.Length == 0)
+            {
+                continue;
+            }
+
+            double groupActive = 0;
+            foreach (var proc in procs)
+            {
+                try
+                {
+                    if (proc.HasExited)
+                    {
+                        continue;
+                    }
+
+                    var (active, commit) = ReadProcessMemoryPair(proc, allowRefreshFallback: false);
+                    groupActive += active;
+                    totalActive += active;
+                    totalCommit += commit;
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+
+            if (groupActive > 0.05)
+            {
+                parts ??= new List<string>(4);
+                parts.Add($"{label}: {groupActive:F1} MB");
+            }
+        }
+
+        return (totalActive, totalCommit, parts is { Count: > 0 } ? string.Join(" · ", parts) : string.Empty);
+    }
+
+    private static (double ActiveMb, double CommitMb) ReadProcessMemoryPair(Process process, bool allowRefreshFallback)
+    {
         if (OperatingSystem.IsWindows())
         {
             try
             {
                 var cb = (uint)Marshal.SizeOf<ProcessMemoryCountersEx2>();
-                if (GetProcessMemoryInfo(process.Handle, out var counters, cb) &&
-                    counters.PrivateWorkingSetSize != UIntPtr.Zero)
+                if (GetProcessMemoryInfo(process.Handle, out var counters, cb))
                 {
-                    activeRamMb = counters.PrivateWorkingSetSize.ToUInt64() / (1024.0 * 1024.0);
+                    var activeBytes = counters.PrivateWorkingSetSize != UIntPtr.Zero
+                        ? counters.PrivateWorkingSetSize.ToUInt64()
+                        : counters.WorkingSetSize.ToUInt64();
+                    var commitBytes = counters.PrivateUsage != UIntPtr.Zero
+                        ? counters.PrivateUsage.ToUInt64()
+                        : counters.PagefileUsage.ToUInt64();
+                    return (activeBytes / (1024.0 * 1024.0), commitBytes / (1024.0 * 1024.0));
                 }
             }
             catch
             {
-                // Fall back to WorkingSet64 if unsupported.
             }
         }
 
-        return (activeRamMb, commitMb, managedMb);
+        if (!allowRefreshFallback)
+        {
+            return (0, 0);
+        }
+
+        process.Refresh();
+        return (process.WorkingSet64 / (1024.0 * 1024.0), process.PrivateMemorySize64 / (1024.0 * 1024.0));
     }
 
-    public static void ScheduleTrim(Action? onCompleted = null, int delayMs = 300)
+    public static void ScheduleTrim(Action? onCompleted = null, int delayMs = 300, bool trimOsWorkingSet = true)
     {
         var cts = new CancellationTokenSource();
         var prev = Interlocked.Exchange(ref _pendingCts, cts);
@@ -97,14 +176,14 @@ public static class MemoryTrimService
                     return;
                 }
 
-                TrimNow();
+                TrimNow(trimOsWorkingSet);
                 onCompleted?.Invoke();
 
                 // Second pass after Avalonia/Skia finishes detaching visual trees & GPU staging surfaces.
                 await Task.Delay(1200, cts.Token).ConfigureAwait(false);
                 if (!cts.IsCancellationRequested)
                 {
-                    TrimNow();
+                    TrimNow(trimOsWorkingSet);
                     onCompleted?.Invoke();
                 }
             }
@@ -125,7 +204,7 @@ public static class MemoryTrimService
         });
     }
 
-    public static void TrimNow()
+    public static void TrimNow(bool trimOsWorkingSet = true)
     {
         GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
@@ -142,8 +221,11 @@ public static class MemoryTrimService
                     HeapCompact(heap, 0);
                 }
 
-                using var current = Process.GetCurrentProcess();
-                SetProcessWorkingSetSizeEx(current.Handle, new IntPtr(-1), new IntPtr(-1), 0);
+                if (trimOsWorkingSet)
+                {
+                    using var current = Process.GetCurrentProcess();
+                    SetProcessWorkingSetSizeEx(current.Handle, new IntPtr(-1), new IntPtr(-1), 0);
+                }
             }
             catch
             {

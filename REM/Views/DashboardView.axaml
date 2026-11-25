@@ -6,7 +6,17 @@
              x:Class="REM.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
 
-  <Grid>
+  <Grid Background="{DynamicResource AppBackgroundBrush}">
+    <!-- Custom Dashboard Wallpaper Layer -->
+    <Image Source="{Binding WallpaperBitmap}"
+           Stretch="UniformToFill"
+           IsVisible="{Binding HasWallpaper}"
+           IsHitTestVisible="False" />
+    <Border Background="#000000"
+            Opacity="{Binding WallpaperDimOpacity}"
+            IsVisible="{Binding HasWallpaper}"
+            IsHitTestVisible="False" />
+
     <Grid ColumnDefinitions="Auto,*">
 
       <!-- Collapsible Zen-Style Left Vertical Sidebar -->
@@ -429,6 +439,166 @@
         <!-- Running App Workspace View -->
         <ContentControl Content="{Binding ActiveModuleView}"
                         IsVisible="{Binding IsModuleViewOpen}" />
+
+        <!-- Fixed Bottom-Right Headless Mini-Player Dock (visible only when 1+ media apps run Headless) -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="6"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,18,18"
+                    ZIndex="10"
+                    IsVisible="{Binding MiniPlayer.IsVisible}">
+          <Button Classes="rem-soft"
+                  Command="{Binding MiniPlayer.PreviousPlayerCommand}"
+                  IsVisible="{Binding MiniPlayer.HasMultiplePlayers}"
+                  Padding="7,12"
+                  CornerRadius="10"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="Previous headless player">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="14" Height="14" />
+          </Button>
+
+          <Border Classes="rem-card"
+                  Width="336"
+                  CornerRadius="12"
+                  BorderBrush="{DynamicResource BorderStrongBrush}"
+                  BorderThickness="1"
+                  Padding="12,9">
+            <StackPanel Spacing="7">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Grid.Column="0"
+                        Width="30" Height="30"
+                        CornerRadius="7"
+                        Background="{Binding MiniPlayer.AppAccentBrush}"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center">
+                  <PathIcon Data="{Binding MiniPlayer.AppIconGeometry}"
+                            Width="15" Height="15"
+                            Foreground="#FFFFFF"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+                </Border>
+
+                <Button Grid.Column="1"
+                        Command="{Binding MiniPlayer.OpenActiveAppCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalAlignment="Center"
+                        Cursor="Hand"
+                        ToolTip.Tip="Open full app UI">
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="{Binding MiniPlayer.TrackTitle}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding MiniPlayer.TrackSubtitle}"
+                               Classes="muted"
+                               FontSize="10"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </Button>
+
+                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8,0,0,0">
+                  <TextBlock Text="{Binding MiniPlayer.AppLabel}"
+                             Classes="muted"
+                             FontSize="9"
+                             FontWeight="SemiBold"
+                             HorizontalAlignment="Right" />
+                  <TextBlock Text="{Binding MiniPlayer.PlayerCounterText}"
+                             Classes="muted"
+                             FontSize="9"
+                             HorizontalAlignment="Right"
+                             IsVisible="{Binding MiniPlayer.HasMultiplePlayers}" />
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                  <Button Classes="rem-icon"
+                          Command="{Binding MiniPlayer.PreviousTrackCommand}"
+                          ToolTip.Tip="Previous / -15s"
+                          Padding="6,4">
+                    <PathIcon Data="{x:Static svc:IconCatalog.SkipPrev}" Width="14" Height="14" />
+                  </Button>
+
+                  <Button Classes="rem-primary"
+                          Command="{Binding MiniPlayer.TogglePlayPauseCommand}"
+                          Width="30" Height="30"
+                          CornerRadius="999"
+                          Padding="0"
+                          ToolTip.Tip="Play / Pause">
+                    <Grid>
+                      <PathIcon Data="{x:Static svc:IconCatalog.Pause}"
+                                Foreground="{DynamicResource TextOnAccentBrush}"
+                                Width="12" Height="12"
+                                IsVisible="{Binding MiniPlayer.IsPlaying}" />
+                      <PathIcon Data="{x:Static svc:IconCatalog.Play}"
+                                Foreground="{DynamicResource TextOnAccentBrush}"
+                                Width="12" Height="12"
+                                IsVisible="{Binding !MiniPlayer.IsPlaying}" />
+                    </Grid>
+                  </Button>
+
+                  <Button Classes="rem-icon"
+                          Command="{Binding MiniPlayer.NextTrackCommand}"
+                          ToolTip.Tip="Next / +15s"
+                          Padding="6,4">
+                    <PathIcon Data="{x:Static svc:IconCatalog.SkipNext}" Width="14" Height="14" />
+                  </Button>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Classes="sidebar-tab"
+                        Classes.active="{Binding MiniPlayer.IsLoopActive}"
+                        Command="{Binding MiniPlayer.CycleLoopCommand}"
+                        ToolTip.Tip="{Binding MiniPlayer.LoopTooltip}"
+                        Padding="7,4"
+                        Margin="0,0,4,0"
+                        VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="2">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Repeat}" Width="13" Height="13" />
+                    <TextBlock Text="{Binding MiniPlayer.LoopBadgeText}"
+                               FontSize="9"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource PrimaryAccentBrush}"
+                               VerticalAlignment="Top" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="2"
+                        Classes="rem-icon"
+                        Command="{Binding MiniPlayer.ToggleLikeCommand}"
+                        IsVisible="{Binding MiniPlayer.ShowLikeButton}"
+                        ToolTip.Tip="Like / Unlike on Spotify"
+                        Padding="6,4"
+                        VerticalAlignment="Center">
+                  <Grid>
+                    <PathIcon Data="{x:Static svc:IconCatalog.Heart}"
+                              Foreground="#1DB954"
+                              Width="14" Height="14"
+                              IsVisible="{Binding MiniPlayer.IsTrackLiked}" />
+                    <PathIcon Data="{x:Static svc:IconCatalog.HeartOutline}"
+                              Width="14" Height="14"
+                              IsVisible="{Binding !MiniPlayer.IsTrackLiked}" />
+                  </Grid>
+                </Button>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Button Classes="rem-soft"
+                  Command="{Binding MiniPlayer.NextPlayerCommand}"
+                  IsVisible="{Binding MiniPlayer.HasMultiplePlayers}"
+                  Padding="7,12"
+                  CornerRadius="10"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="Next headless player">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
       </Grid>
     </Grid>
 

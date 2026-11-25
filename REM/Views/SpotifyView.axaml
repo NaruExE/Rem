@@ -5,6 +5,60 @@
              x:Class="REM.Views.SpotifyView"
              x:DataType="vm:SpotifyViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="Border.lyric-line">
+      <Setter Property="Opacity" Value="0.62" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Setter Property="RenderTransform" Value="scale(1)" />
+    </Style>
+    <Style Selector="Border.lyric-line.past">
+      <Setter Property="Opacity" Value="0.34" />
+    </Style>
+    <Style Selector="Border.lyric-line.active">
+      <Setter Property="Opacity" Value="1.0" />
+      <Setter Property="Background" Value="#1EFFFFFF" />
+      <Setter Property="RenderTransform" Value="scale(1.03)" />
+    </Style>
+    <Style Selector="Border.lyric-line.animated">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.26" Easing="CubicEaseOut" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.28" Easing="CubicEaseOut" />
+          <BrushTransition Property="Background" Duration="0:0:0.24" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="TextBlock.lyric-text">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style Selector="Border.lyric-line.active TextBlock.lyric-text">
+      <Setter Property="Foreground" Value="#FFFFFF" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="TextBlock.lyric-text.animated">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.22" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="ListBox.virtual-tracks ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ListBox.virtual-tracks ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox.virtual-tracks ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.Resources>
     <DataTemplate x:Key="SpotifyTrackRowTemplate" DataType="vm:SpotifyTrackRowViewModel">
       <Border Classes="rem-card"
@@ -193,14 +247,43 @@
                   <TextBlock Text="Liked Songs" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
+
+              <Button Classes="sidebar-tab"
+                      Classes.active="{Binding IsSavedAlbumsSection}"
+                      Command="{Binding SelectSavedAlbumsCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Width="14" Height="14" />
+                  <TextBlock Text="Saved Albums" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <Button Classes="sidebar-tab"
+                      Classes.active="{Binding IsTopArtistsSection}"
+                      Command="{Binding SelectTopArtistsCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Width="14" Height="14" />
+                  <TextBlock Text="Top Artists" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
             </StackPanel>
 
             <StackPanel Grid.Row="1" Spacing="8" Margin="6,14,6,8">
               <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
-              <TextBlock Text="YOUR PLAYLISTS"
-                         Classes="muted"
-                         FontSize="10"
-                         FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="YOUR PLAYLISTS"
+                           Classes="muted"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Classes="rem-icon"
+                        Command="{Binding OpenCreatePlaylistModalCommand}"
+                        ToolTip.Tip="Create New Playlist"
+                        Padding="4,2">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="11" Height="11" />
+                </Button>
+              </Grid>
             </StackPanel>
 
             <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
@@ -282,10 +365,19 @@
                   BorderBrush="{DynamicResource BorderSoftBrush}"
                   BorderThickness="0,0,0,1"
                   Padding="18,12">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-              <TextBox Grid.Column="0"
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+              <Button Grid.Column="0"
+                      Classes="rem-icon"
+                      Command="{Binding NavigateBackCommand}"
+                      IsVisible="{Binding CanNavigateBack}"
+                      ToolTip.Tip="Back"
+                      Margin="0,0,8,0">
+                <TextBlock Text="←" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
+              </Button>
+
+              <TextBox Grid.Column="1"
                        Classes="rem"
-                       Watermark="Search Spotify songs or artists (up to 10 results)..."
+                       Watermark="Search songs, artists, albums, or playlists..."
                        Text="{Binding SearchQuery}"
                        Margin="0,0,8,0">
                 <TextBox.KeyBindings>
@@ -293,14 +385,14 @@
                 </TextBox.KeyBindings>
               </TextBox>
 
-              <Button Grid.Column="1"
+              <Button Grid.Column="2"
                       Classes="rem-primary"
                       Command="{Binding SearchCommand}"
                       IsEnabled="{Binding !IsBusy}"
                       Content="Search"
                       Margin="0,0,8,0" />
 
-              <Button Grid.Column="2"
+              <Button Grid.Column="3"
                       Classes="rem-icon"
                       Command="{Binding OpenSettingsCommand}"
                       ToolTip.Tip="Spotify &amp; API Settings"
@@ -308,7 +400,7 @@
                 <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="15" Height="15" />
               </Button>
 
-              <Button Grid.Column="3"
+              <Button Grid.Column="4"
                       Classes="rem-icon"
                       Command="{Binding ToggleHeaderCommand}"
                       IsVisible="{Binding !IsHeaderVisible}"
@@ -320,7 +412,7 @@
 
           <!-- Busy Progress Bar -->
           <ProgressBar Grid.Row="1"
-                       IsIndeterminate="True"
+                       IsIndeterminate="{Binding IsBusy}"
                        Height="2"
                        IsVisible="{Binding IsBusy}"
                        Foreground="{DynamicResource PrimaryAccentBrush}" />
@@ -369,19 +461,28 @@
             </Border>
           </StackPanel>
 
-          <!-- Scrollable Content View -->
-          <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
+          <!-- Scrollable Content View (non-virtualized pages) -->
+          <ScrollViewer Grid.Row="3"
+                        HorizontalScrollBarVisibility="Disabled"
+                        IsVisible="{Binding !IsCollectionSection}">
             <StackPanel Spacing="14" Margin="18,14,18,48">
 
               <!-- SECTION: HOME / FYP -->
-              <StackPanel Spacing="12" IsVisible="{Binding IsHomeSection}">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+              <StackPanel Spacing="14" IsVisible="{Binding IsHomeSection}">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                   <StackPanel Spacing="2" Margin="0,0,12,0">
                     <TextBlock Text="For You" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding FypSubtitle}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                   </StackPanel>
 
-                  <Button Grid.Column="1"
+                  <CheckBox Grid.Column="1"
+                            Content="Deep Cuts"
+                            IsChecked="{Binding PreferDeepCuts}"
+                            ToolTip.Tip="Bias personal mixes and radio toward less mainstream / deep cut tracks"
+                            Margin="0,0,10,0"
+                            VerticalAlignment="Center" />
+
+                  <Button Grid.Column="2"
                           Classes="rem-soft"
                           Command="{Binding RefreshFypCommand}"
                           IsEnabled="{Binding !IsBusy}"
@@ -393,7 +494,7 @@
                     </StackPanel>
                   </Button>
 
-                  <Button Grid.Column="2"
+                  <Button Grid.Column="3"
                           Classes="rem-primary"
                           Command="{Binding PlayActiveCollectionCommand}"
                           VerticalAlignment="Center">
@@ -408,7 +509,7 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Spacing="3" Margin="0,0,12,0">
                       <TextBlock Text="Connect Spotify Web API (PKCE)" FontSize="14" FontWeight="SemiBold" />
-                      <TextBlock Text="Add your Spotify Client ID in Settings → Spotify &amp; APIs (with optional Last.fm API Key) for Personalized FYP, Search, Liked Songs, and Playlists."
+                      <TextBlock Text="Add your Spotify Client ID in Settings → Spotify &amp; APIs (with optional Last.fm API Key) for Personalized FYP, Mixes, Search, Artists, Liked Songs, and Playlists."
                                  Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                     <Button Grid.Column="1"
@@ -419,39 +520,383 @@
                   </Grid>
                 </Border>
 
+                <!-- Made For You (REM) Personal Mixes -->
+                <StackPanel Spacing="8" IsVisible="{Binding HasWebApiAuth}">
+                  <TextBlock Text="MADE FOR YOU (REM)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding RemMixCards}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:RemMixCardViewModel">
+                        <Button Command="{Binding OpenCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="0"
+                                Margin="0,0,10,10"
+                                Cursor="Hand">
+                          <Border Classes="rem-card" Width="188" Padding="12,10">
+                            <StackPanel Spacing="5">
+                              <Grid ColumnDefinitions="Auto,*">
+                                <Border Grid.Column="0" CornerRadius="4" Padding="6,2" Background="{Binding AccentBrush}">
+                                  <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold" Foreground="#0B0D12" />
+                                </Border>
+                              </Grid>
+                              <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="11" MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                            </StackPanel>
+                          </Border>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <TextBlock Text="RECENT &amp; RECOMMENDED TRACKS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
                 <ItemsControl ItemsSource="{Binding FypTracks}"
                               ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
               </StackPanel>
 
-              <!-- SECTION: SEARCH RESULTS -->
-              <StackPanel Spacing="12" IsVisible="{Binding IsSearchSection}">
-                <TextBlock Text="Search Results" FontSize="20" FontWeight="SemiBold" />
+              <!-- SECTION: MULTI-SEARCH RESULTS -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsSearchSection}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="Search Results" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSearchFilterAll}" Command="{Binding SetSearchFilterCommand}" CommandParameter="All" Content="All" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSearchFilterTracks}" Command="{Binding SetSearchFilterCommand}" CommandParameter="Tracks" Content="Songs" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSearchFilterArtists}" Command="{Binding SetSearchFilterCommand}" CommandParameter="Artists" Content="Artists" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSearchFilterAlbums}" Command="{Binding SetSearchFilterCommand}" CommandParameter="Albums" Content="Albums" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsSearchFilterPlaylists}" Command="{Binding SetSearchFilterCommand}" CommandParameter="Playlists" Content="Playlists" Padding="10,5" FontSize="11" />
+                  </StackPanel>
+                </Grid>
 
                 <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
                   <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </Border>
 
-                <ItemsControl ItemsSource="{Binding SearchTracks}"
+                <!-- Artists -->
+                <StackPanel Spacing="8" IsVisible="{Binding ShowSearchArtistsSection}">
+                  <TextBlock Text="ARTISTS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding SearchArtists}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:SpotifyArtistCardViewModel">
+                        <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                          <Border Classes="rem-card" Width="154" Padding="12">
+                            <StackPanel Spacing="8" HorizontalAlignment="Center">
+                              <Border Width="86" Height="86" CornerRadius="43" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" HorizontalAlignment="Center">
+                                <Grid>
+                                  <Image Source="{Binding PhotoBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasPhoto}" />
+                                  <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasPhoto}" />
+                                </Grid>
+                              </Border>
+                              <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                          </Border>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <!-- Albums -->
+                <StackPanel Spacing="8" IsVisible="{Binding ShowSearchAlbumsSection}">
+                  <TextBlock Text="ALBUMS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding SearchAlbums}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:SpotifyAlbumCardViewModel">
+                        <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                          <Border Classes="rem-card" Width="162" Padding="10">
+                            <StackPanel Spacing="7">
+                              <Border Width="140" Height="112" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True">
+                                <Grid>
+                                  <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                  <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Foreground="{DynamicResource TextMutedBrush}" Width="26" Height="26" IsVisible="{Binding !HasCover}" />
+                                </Grid>
+                              </Border>
+                              <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                          </Border>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <!-- Playlists -->
+                <StackPanel Spacing="8" IsVisible="{Binding ShowSearchPlaylistsSection}">
+                  <TextBlock Text="PLAYLISTS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding SearchPlaylists}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:SpotifyPlaylistCardViewModel">
+                        <Border Classes="rem-card" Width="168" Padding="10" Margin="0,0,10,10">
+                          <StackPanel Spacing="7">
+                            <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                              <StackPanel Spacing="7">
+                                <Border Width="146" Height="106" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True">
+                                  <Grid>
+                                    <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                    <PathIcon Data="{x:Static svc:IconCatalog.MusicNote}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                                  </Grid>
+                                </Border>
+                                <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                              </StackPanel>
+                            </Button>
+                            <Grid ColumnDefinitions="*,*">
+                              <Button Grid.Column="0" Classes="rem-soft" Command="{Binding PlayCommand}" Content="Play" Padding="6,4" FontSize="10" Margin="0,0,4,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                              <Button Grid.Column="1" Classes="rem-soft" Command="{Binding FollowCommand}" Content="Save" Padding="6,4" FontSize="10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                            </Grid>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <!-- Songs -->
+                <StackPanel Spacing="8" IsVisible="{Binding ShowSearchTracksSection}">
+                  <TextBlock Text="SONGS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                  <ItemsControl ItemsSource="{Binding SearchTracks}"
+                                ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+                </StackPanel>
+              </StackPanel>
+
+              <!-- SECTION: ARTIST PROFILE -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsArtistProfileSection}">
+                <Border Classes="rem-card" Padding="16">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Width="96" Height="96" CornerRadius="48" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" Margin="0,0,16,0" VerticalAlignment="Center">
+                      <Grid>
+                        <Image Source="{Binding ActiveArtistBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasActiveArtistBitmap}" />
+                        <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Foreground="{DynamicResource TextMutedBrush}" Width="28" Height="28" IsVisible="{Binding !HasActiveArtistBitmap}" />
+                      </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                      <TextBlock Text="ARTIST" Classes="muted" FontSize="10" FontWeight="Bold" />
+                      <TextBlock Text="{Binding ActiveArtistName}" FontSize="24" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding ActiveArtistSubtitle}" Classes="muted" FontSize="12" />
+                      <ItemsControl ItemsSource="{Binding ActiveArtistTags}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="x:String">
+                            <Border CornerRadius="4" Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" Padding="7,2" Margin="0,0,6,4">
+                              <TextBlock Text="{Binding .}" Classes="muted" FontSize="10" />
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <Button Classes="rem-primary" Command="{Binding PlayActiveCollectionCommand}" Content="Play Top Tracks" />
+                        <Button Classes="rem-soft" Command="{Binding StartActiveArtistRadioCommand}" Content="Artist Radio" />
+                        <Button Classes="rem-soft" Command="{Binding ToggleFollowActiveArtistCommand}" Content="{Binding ArtistFollowLabel}" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasActiveArtistBio}">
+                  <TextBlock Text="{Binding ActiveArtistBio}" Classes="muted" FontSize="12" TextWrapping="Wrap" LineHeight="18" />
+                </Border>
+
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
+                  <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+
+                <TextBlock Text="TOP TRACKS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding CollectionTracks}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+
+                <TextBlock Text="ALBUMS &amp; SINGLES" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding ArtistAlbums}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyAlbumCardViewModel">
+                      <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                        <Border Classes="rem-card" Width="162" Padding="10">
+                          <StackPanel Spacing="7">
+                            <Border Width="140" Height="112" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True">
+                              <Grid>
+                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                              </Grid>
+                            </Border>
+                            <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="FANS ALSO LIKE" Classes="muted" FontSize="11" FontWeight="SemiBold" />
+                <ItemsControl ItemsSource="{Binding SimilarArtists}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyArtistCardViewModel">
+                      <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                        <Border Classes="rem-card" Width="146" Padding="10">
+                          <StackPanel Spacing="7" HorizontalAlignment="Center">
+                            <Border Width="76" Height="76" CornerRadius="38" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" HorizontalAlignment="Center">
+                              <Grid>
+                                <Image Source="{Binding PhotoBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasPhoto}" />
+                                <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Foreground="{DynamicResource TextMutedBrush}" Width="22" Height="22" IsVisible="{Binding !HasPhoto}" />
+                              </Grid>
+                            </Border>
+                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <!-- SECTION: ALBUM DETAIL -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsAlbumDetailSection}">
+                <Border Classes="rem-card" Padding="16">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Width="104" Height="104" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" Margin="0,0,16,0">
+                      <Grid>
+                        <Image Source="{Binding ActiveAlbumBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasActiveAlbumBitmap}" />
+                        <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Foreground="{DynamicResource TextMutedBrush}" Width="28" Height="28" IsVisible="{Binding !HasActiveAlbumBitmap}" />
+                      </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                      <TextBlock Text="ALBUM" Classes="muted" FontSize="10" FontWeight="Bold" />
+                      <TextBlock Text="{Binding ActiveAlbumTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                      <Button Command="{Binding OpenActiveAlbumArtistCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Left" Cursor="Hand">
+                        <TextBlock Text="{Binding ActiveAlbumSubtitle}" Classes="muted" FontSize="12" />
+                      </Button>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <Button Classes="rem-primary" Command="{Binding PlayActiveCollectionCommand}" Content="Play Album" />
+                        <Button Classes="rem-soft" Command="{Binding ToggleSaveActiveAlbumCommand}" Content="{Binding AlbumSaveLabel}" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding CollectionTracks}"
                               ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
               </StackPanel>
 
-              <!-- SECTION: LIKED SONGS / PLAYLIST -->
-              <StackPanel Spacing="12" IsVisible="{Binding IsCollectionSection}">
-                <Grid ColumnDefinitions="*,Auto">
-                  <StackPanel Spacing="2" Margin="0,0,12,0">
-                    <TextBlock Text="{Binding CollectionTitle}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding CollectionSubtitle}" Classes="muted" FontSize="12" />
-                  </StackPanel>
+              <!-- SECTION: SAVED ALBUMS -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsSavedAlbumsSection}">
+                <TextBlock Text="Saved Albums" FontSize="20" FontWeight="SemiBold" />
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
+                  <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding SavedAlbums}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyAlbumCardViewModel">
+                      <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                        <Border Classes="rem-card" Width="166" Padding="10">
+                          <StackPanel Spacing="7">
+                            <Border Width="144" Height="114" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True">
+                              <Grid>
+                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                              </Grid>
+                            </Border>
+                            <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
 
-                  <Button Grid.Column="1"
-                          Classes="rem-primary"
-                          Command="{Binding PlayActiveCollectionCommand}"
-                          VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                      <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="13" Height="13" />
-                      <TextBlock Text="Play All" Foreground="{DynamicResource TextOnAccentBrush}" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </Button>
+              <!-- SECTION: TOP ARTISTS -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsTopArtistsSection}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="Your Top Artists" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsTopRangeShort}" Command="{Binding SetTopArtistsRangeCommand}" CommandParameter="short_term" Content="4 Weeks" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsTopRangeMedium}" Command="{Binding SetTopArtistsRangeCommand}" CommandParameter="medium_term" Content="6 Months" Padding="10,5" FontSize="11" />
+                    <Button Classes="sidebar-tab" Classes.active="{Binding IsTopRangeLong}" Command="{Binding SetTopArtistsRangeCommand}" CommandParameter="long_term" Content="All Time" Padding="10,5" FontSize="11" />
+                  </StackPanel>
+                </Grid>
+
+                <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
+                  <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding TopArtists}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:SpotifyArtistCardViewModel">
+                      <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,10,10" Cursor="Hand">
+                        <Border Classes="rem-card" Width="156" Padding="12">
+                          <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <Border Width="86" Height="86" CornerRadius="43" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" HorizontalAlignment="Center">
+                              <Grid>
+                                <Image Source="{Binding PhotoBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasPhoto}" />
+                                <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasPhoto}" />
+                              </Grid>
+                            </Border>
+                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <!-- SECTION: REM MIX / SONG RADIO / ARTIST RADIO -->
+              <StackPanel Spacing="14" IsVisible="{Binding IsRemMixSection}">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                  <StackPanel Spacing="4" Margin="0,0,12,0">
+                    <TextBlock Text="{Binding ActiveMixBadge}" Foreground="{DynamicResource PrimaryAccentBrush}" FontSize="10" FontWeight="Bold" />
+                    <TextBlock Text="{Binding ActiveMixTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding ActiveMixSubtitle}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="rem-soft" Command="{Binding RefreshActiveMixCommand}" IsEnabled="{Binding !IsBusy}" Content="Regenerate" Margin="0,0,6,0" VerticalAlignment="Center" />
+                  <Button Grid.Column="2" Classes="rem-soft" Command="{Binding SaveActiveMixToSpotifyCommand}" IsEnabled="{Binding !IsBusy}" Content="Save to Spotify" Margin="0,0,6,0" VerticalAlignment="Center" />
+                  <Button Grid.Column="3" Classes="rem-primary" Command="{Binding PlayActiveCollectionCommand}" Content="Play All" VerticalAlignment="Center" />
                 </Grid>
 
                 <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
@@ -463,6 +908,59 @@
               </StackPanel>
             </StackPanel>
           </ScrollViewer>
+
+          <!-- Virtualized Liked Songs / Playlist View -->
+          <Grid Grid.Row="3"
+                RowDefinitions="Auto,Auto,*"
+                Margin="18,14,18,12"
+                IsVisible="{Binding IsCollectionSection}">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,12">
+              <StackPanel Spacing="2" Margin="0,0,12,0">
+                <TextBlock Text="{Binding CollectionTitle}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding CollectionSubtitle}" Classes="muted" FontSize="12" />
+              </StackPanel>
+
+              <Button Grid.Column="1"
+                      Classes="rem-soft"
+                      Command="{Binding OpenEditActivePlaylistModalCommand}"
+                      IsVisible="{Binding IsActivePlaylistEditable}"
+                      Content="Edit"
+                      Margin="0,0,6,0"
+                      VerticalAlignment="Center" />
+
+              <Button Grid.Column="2"
+                      Classes="rem-danger"
+                      Command="{Binding DeleteActivePlaylistCommand}"
+                      IsVisible="{Binding IsActivePlaylistEditable}"
+                      Content="Remove"
+                      Margin="0,0,6,0"
+                      VerticalAlignment="Center" />
+
+              <Button Grid.Column="3"
+                      Classes="rem-primary"
+                      Command="{Binding PlayActiveCollectionCommand}"
+                      VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="13" Height="13" />
+                  <TextBlock Text="Play All" Foreground="{DynamicResource TextOnAccentBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <Border Grid.Row="1" Classes="rem-card" Padding="14" Margin="0,0,0,12" IsVisible="{Binding HasFeedMessage}">
+              <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+            </Border>
+
+            <ListBox Grid.Row="2"
+                     Classes="virtual-tracks"
+                     ItemsSource="{Binding CollectionTracks}"
+                     ItemTemplate="{StaticResource SpotifyTrackRowTemplate}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0"
+                     Margin="0,0,0,28"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+          </Grid>
 
           <!-- Rem Companion Sitting Above Player (Bottom-Right of Song List, Left of Lyrics) -->
           <Image Grid.Row="3"
@@ -480,7 +978,7 @@
         <Border Grid.Column="2"
                 Width="316"
                 IsVisible="{Binding IsDrawerOpen}"
-                Background="#B011141B"
+                Background="{Binding LyricsDrawerBackgroundBrush}"
                 BorderBrush="{DynamicResource BorderSoftBrush}"
                 BorderThickness="1,0,0,0">
           <Grid RowDefinitions="Auto,*">
@@ -526,7 +1024,7 @@
                           IsVisible="{Binding IsLyricsDrawerActive}"
                           HorizontalScrollBarVisibility="Disabled">
               <StackPanel Spacing="10" Margin="14,12,14,18">
-                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                   <TextBlock Grid.Column="0"
                              Text="{Binding LyricsStatusText}"
                              Classes="muted"
@@ -549,12 +1047,67 @@
                     <PathIcon Data="{x:Static svc:IconCatalog.Search}" Width="12" Height="12" />
                   </Button>
                   <Button Grid.Column="3"
+                          Classes="sidebar-tab"
+                          Classes.active="{Binding IsLyricsStyleOpen}"
+                          Command="{Binding ToggleLyricsStyleCommand}"
+                          ToolTip.Tip="Customize Lyrics Style &amp; Animations"
+                          Padding="6,4"
+                          Margin="0,0,2,0">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="12" Height="12" />
+                  </Button>
+                  <Button Grid.Column="4"
                           Classes="rem-icon"
                           Command="{Binding ToggleLyricsFullscreenCommand}"
                           ToolTip.Tip="Fullscreen Lyrics">
                     <PathIcon Data="{x:Static svc:IconCatalog.Fullscreen}" Width="12" Height="12" />
                   </Button>
                 </Grid>
+
+                <!-- Lyrics Appearance Controls Card -->
+                <Border Classes="rem-card"
+                        Padding="10"
+                        IsVisible="{Binding IsLyricsStyleOpen}">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="LYRICS STYLE" Classes="muted" FontSize="10" FontWeight="Bold" />
+                    <Grid ColumnDefinitions="*,*,*">
+                      <Button Grid.Column="0" Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgAmbient}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="Ambient" Content="Ambient" Padding="6,4" FontSize="10" Margin="0,0,3,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                      <Button Grid.Column="1" Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgSolid}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="Solid" Content="Solid" Padding="6,4" FontSize="10" Margin="0,0,3,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                      <Button Grid.Column="2" Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgAlbumTint}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="AlbumTint" Content="Tint" Padding="6,4" FontSize="10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                    </Grid>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding IsLyricsBgSolid}">
+                      <ItemsControl ItemsSource="{Binding LyricsColorSwatches}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:LyricsColorSwatchViewModel">
+                            <Button Command="{Binding SelectCommand}" Background="Transparent" BorderThickness="0" Padding="2" Cursor="Hand" ToolTip.Tip="{Binding Name}">
+                              <Border Width="20" Height="20" CornerRadius="10" Background="{Binding ColorBrush}" BorderBrush="#88FFFFFF" BorderThickness="1" />
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="rem" FontSize="11" Padding="7,4" Watermark="#0B0D14" Text="{Binding LyricsSolidColorHex}" Margin="0,0,6,0" />
+                        <Button Grid.Column="1" Classes="rem-soft" Command="{Binding ApplyCustomLyricsColorCommand}" Content="Set" Padding="9,4" FontSize="11" />
+                      </Grid>
+                    </StackPanel>
+
+                    <WrapPanel Orientation="Horizontal">
+                      <CheckBox Content="Timestamps" IsChecked="{Binding LyricsShowTimestamps}" FontSize="11" Margin="0,0,10,4" />
+                      <CheckBox Content="Animations" IsChecked="{Binding LyricsAnimate}" FontSize="11" Margin="0,0,10,4" />
+                      <CheckBox Content="Center" IsChecked="{Binding LyricsCentered}" FontSize="11" Margin="0,0,0,4" />
+                    </WrapPanel>
+
+                    <Grid ColumnDefinitions="Auto,*">
+                      <TextBlock Grid.Column="0" Text="Text Size" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                      <Slider Grid.Column="1" Minimum="12" Maximum="22" Value="{Binding LyricsFontSize}" VerticalAlignment="Center" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
 
                 <!-- Manual Lyrics Search & Picker -->
                 <Border Classes="rem-card"
@@ -706,29 +1259,29 @@
                               HorizontalContentAlignment="Stretch"
                               ToolTip.Tip="{Binding TimestampDisplay, StringFormat='Click to jump or sync ({0})'}"
                               Cursor="Hand">
-                        <Border Padding="8,6" CornerRadius="7" Margin="0,0,0,2">
-                          <Grid ColumnDefinitions="34,*">
+                        <Border Classes="lyric-line"
+                                Classes.active="{Binding IsActive}"
+                                Classes.past="{Binding IsPast}"
+                                Classes.animated="{Binding IsLyricsAnimated}"
+                                Padding="8,6"
+                                Margin="0,0,0,2">
+                          <Grid ColumnDefinitions="Auto,*">
                             <TextBlock Grid.Column="0"
                                        Text="{Binding TimestampDisplay}"
                                        Classes="muted"
                                        FontSize="10"
+                                       Width="34"
                                        Opacity="0.48"
                                        VerticalAlignment="Center"
-                                       Margin="0,0,6,0" />
-                            <Grid Grid.Column="1">
-                              <TextBlock Text="{Binding Text}"
-                                         FontSize="15"
-                                         FontWeight="Bold"
-                                         Foreground="{DynamicResource PrimaryAccentBrush}"
-                                         TextWrapping="Wrap"
-                                         IsVisible="{Binding IsActive}" />
-                              <TextBlock Text="{Binding Text}"
-                                         Classes="muted"
-                                         FontSize="13"
-                                         Opacity="0.68"
-                                         TextWrapping="Wrap"
-                                         IsVisible="{Binding !IsActive}" />
-                            </Grid>
+                                       Margin="0,0,6,0"
+                                       IsVisible="{Binding ShowTimestamp}" />
+                            <TextBlock Grid.Column="1"
+                                       Classes="lyric-text"
+                                       Classes.animated="{Binding IsLyricsAnimated}"
+                                       Text="{Binding Text}"
+                                       FontSize="{Binding DrawerFontSize}"
+                                       TextAlignment="{Binding LineTextAlignment}"
+                                       TextWrapping="Wrap" />
                           </Grid>
                         </Border>
                       </Button>
@@ -816,21 +1369,56 @@
         <TextBlock Text="{Binding ToastMessage}" FontSize="12" FontWeight="SemiBold" />
       </Border>
 
+      <!-- Inline Create / Edit Playlist Modal Overlay -->
+      <Border Grid.Row="0"
+              Grid.RowSpan="2"
+              Background="#B8080A10"
+              IsVisible="{Binding IsPlaylistModalOpen}">
+        <Border Classes="rem-card"
+                Width="390"
+                Padding="20"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding PlaylistModalTitleText}" FontSize="17" FontWeight="Bold" />
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Name" Classes="muted" FontSize="11" />
+              <TextBox Classes="rem" Watermark="My awesome playlist..." Text="{Binding PlaylistModalName}" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="Description (optional)" Classes="muted" FontSize="11" />
+              <TextBox Classes="rem" Watermark="A little description..." Text="{Binding PlaylistModalDescription}" />
+            </StackPanel>
+
+            <CheckBox Content="Make playlist public" IsChecked="{Binding PlaylistModalIsPublic}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+              <Button Classes="rem-soft" Command="{Binding CancelPlaylistModalCommand}" Content="Cancel" />
+              <Button Classes="rem-primary" Command="{Binding SubmitPlaylistModalCommand}" Content="Save" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Border>
+
       <!-- Fullscreen Lyrics Stage Overlay (keeps bottom Player Bar visible) -->
       <Border Grid.Row="0"
               Grid.RowSpan="2"
-              Background="#EE0B0D12"
+              Background="{Binding LyricsFullscreenBackgroundBrush}"
               IsVisible="{Binding IsLyricsFullscreen}">
         <Grid>
-          <Border IsHitTestVisible="False" Background="{Binding EffectiveAmbientGlowBrush}" />
+          <Border IsHitTestVisible="False"
+                  Background="{Binding EffectiveAmbientGlowBrush}"
+                  IsVisible="{Binding IsLyricsBgAmbient}" />
 
-          <Grid RowDefinitions="Auto,*">
+          <Grid RowDefinitions="Auto,Auto,*">
             <!-- Top Fullscreen Controls -->
             <Border Grid.Row="0"
                     BorderBrush="{DynamicResource BorderSoftBrush}"
                     BorderThickness="0,0,0,1"
                     Padding="24,14">
-              <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <Border Grid.Column="0"
                         Width="44" Height="44"
                         CornerRadius="8"
@@ -859,7 +1447,7 @@
                         BorderThickness="1"
                         CornerRadius="8"
                         Padding="8,5"
-                        Margin="0,0,12,0"
+                        Margin="0,0,10,0"
                         VerticalAlignment="Center"
                         IsVisible="{Binding IsSyncedLyrics}">
                   <StackPanel Orientation="Horizontal" Spacing="4">
@@ -875,6 +1463,19 @@
                 </Border>
 
                 <Button Grid.Column="3"
+                        Classes="sidebar-tab"
+                        Classes.active="{Binding IsLyricsStyleOpen}"
+                        Command="{Binding ToggleLyricsStyleCommand}"
+                        ToolTip.Tip="Customize Lyrics Background, Font &amp; Animations"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Settings}" Width="13" Height="13" />
+                    <TextBlock Text="Style" FontSize="12" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Button Grid.Column="4"
                         Classes="rem-soft"
                         Command="{Binding CloseLyricsFullscreenCommand}"
                         ToolTip.Tip="Exit Fullscreen Lyrics (Esc)"
@@ -887,8 +1488,55 @@
               </Grid>
             </Border>
 
+            <!-- Fullscreen Lyrics Style Drawer Bar -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="24,10"
+                    IsVisible="{Binding IsLyricsStyleOpen}">
+              <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,18,2" VerticalAlignment="Center">
+                  <TextBlock Text="Background:" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgAmbient}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="Ambient" Content="Ambient" Padding="9,4" FontSize="11" />
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgSolid}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="Solid" Content="Solid" Padding="9,4" FontSize="11" />
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsLyricsBgAlbumTint}" Command="{Binding SetLyricsBgModeCommand}" CommandParameter="AlbumTint" Content="Album Tint" Padding="9,4" FontSize="11" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,18,2" VerticalAlignment="Center" IsVisible="{Binding IsLyricsBgSolid}">
+                  <ItemsControl ItemsSource="{Binding LyricsColorSwatches}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:LyricsColorSwatchViewModel">
+                        <Button Command="{Binding SelectCommand}" Background="Transparent" BorderThickness="0" Padding="1" Cursor="Hand" ToolTip.Tip="{Binding Name}">
+                          <Border Width="20" Height="20" CornerRadius="10" Background="{Binding ColorBrush}" BorderBrush="#88FFFFFF" BorderThickness="1" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBox Classes="rem" Width="82" FontSize="11" Padding="6,3" Watermark="#0B0D14" Text="{Binding LyricsSolidColorHex}" />
+                  <Button Classes="rem-soft" Command="{Binding ApplyCustomLyricsColorCommand}" Content="Set" Padding="8,4" FontSize="11" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,2,18,2" VerticalAlignment="Center">
+                  <CheckBox Content="Timestamps" IsChecked="{Binding LyricsShowTimestamps}" FontSize="11" />
+                  <CheckBox Content="Smooth Animations" IsChecked="{Binding LyricsAnimate}" FontSize="11" />
+                  <CheckBox Content="Center Text" IsChecked="{Binding LyricsCentered}" FontSize="11" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2" VerticalAlignment="Center">
+                  <TextBlock Text="Size" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+                  <Slider Minimum="12" Maximum="22" Value="{Binding LyricsFontSize}" Width="90" VerticalAlignment="Center" />
+                </StackPanel>
+              </WrapPanel>
+            </Border>
+
             <!-- Centered Large Sing-Along Lyrics -->
-            <ScrollViewer Grid.Row="1"
+            <ScrollViewer Grid.Row="2"
                           x:Name="FullscreenLyricsScrollViewer"
                           HorizontalScrollBarVisibility="Disabled">
               <StackPanel Spacing="14" MaxWidth="780" HorizontalAlignment="Center" Margin="32,28,32,48">
@@ -916,28 +1564,29 @@
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Stretch"
                               Cursor="Hand">
-                        <Border Padding="14,10" CornerRadius="10" Margin="0,0,0,4">
-                          <Grid ColumnDefinitions="46,*">
+                        <Border Classes="lyric-line"
+                                Classes.active="{Binding IsActive}"
+                                Classes.past="{Binding IsPast}"
+                                Classes.animated="{Binding IsLyricsAnimated}"
+                                Padding="14,10"
+                                Margin="0,0,0,4">
+                          <Grid ColumnDefinitions="Auto,*">
                             <TextBlock Grid.Column="0"
                                        Text="{Binding TimestampDisplay}"
                                        Classes="muted"
                                        FontSize="12"
-                                       Opacity="0.45"
-                                       VerticalAlignment="Center" />
-                            <Grid Grid.Column="1">
-                              <TextBlock Text="{Binding Text}"
-                                         FontSize="26"
-                                         FontWeight="Bold"
-                                         Foreground="{DynamicResource PrimaryAccentBrush}"
-                                         TextWrapping="Wrap"
-                                         IsVisible="{Binding IsActive}" />
-                              <TextBlock Text="{Binding Text}"
-                                         Classes="muted"
-                                         FontSize="20"
-                                         Opacity="0.48"
-                                         TextWrapping="Wrap"
-                                         IsVisible="{Binding !IsActive}" />
-                            </Grid>
+                                       Width="44"
+                                       Opacity="0.48"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       IsVisible="{Binding ShowTimestamp}" />
+                            <TextBlock Grid.Column="1"
+                                       Classes="lyric-text"
+                                       Classes.animated="{Binding IsLyricsAnimated}"
+                                       Text="{Binding Text}"
+                                       FontSize="{Binding FullscreenFontSize}"
+                                       TextAlignment="{Binding LineTextAlignment}"
+                                       TextWrapping="Wrap" />
                           </Grid>
                         </Border>
                       </Button>
@@ -1009,16 +1658,33 @@
               </Border>
 
               <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center" Margin="0,0,8,0">
-                <TextBlock Text="{Binding CurrentTrackTitle}"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" />
+                <Button Command="{Binding OpenCurrentTrackAlbumCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        HorizontalAlignment="Left"
+                        HorizontalContentAlignment="Left"
+                        Cursor="Hand"
+                        ToolTip.Tip="Open Album">
+                  <TextBlock Text="{Binding CurrentTrackTitle}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                </Button>
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding CurrentTrackArtist}"
-                             Classes="muted"
-                             FontSize="11"
-                             TextTrimming="CharacterEllipsis"
-                             MaxWidth="180" />
+                  <Button Command="{Binding OpenCurrentTrackArtistCommand}"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Padding="0"
+                          HorizontalAlignment="Left"
+                          Cursor="Hand"
+                          ToolTip.Tip="Open Artist Profile">
+                    <TextBlock Text="{Binding CurrentTrackArtist}"
+                               Classes="muted"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="180" />
+                  </Button>
                   <TextBlock Text="{Binding CurrentAudioSpec}"
                              Classes="muted"
                              FontSize="10"

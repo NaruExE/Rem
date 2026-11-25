@@ -8,7 +8,10 @@ public sealed record SpotifyTrackItem(
     string AlbumName,
     string? AlbumCoverUrl,
     long DurationMs,
-    string? ContextUri = null)
+    string? ContextUri = null,
+    string? PrimaryArtistId = null,
+    string? AlbumId = null,
+    DateTimeOffset? PlayedAt = null)
 {
     public string DurationDisplay
     {
@@ -24,6 +27,50 @@ public sealed record SpotifyTrackItem(
         }
     }
 }
+
+public sealed record SpotifyArtistItem(
+    string Id,
+    string Uri,
+    string Name,
+    string? ImageUrl,
+    string? Subtitle = null,
+    long Followers = 0,
+    List<string>? Genres = null,
+    int Popularity = 0);
+
+public sealed record SpotifyAlbumItem(
+    string Id,
+    string Uri,
+    string Name,
+    string Artists,
+    string ReleaseDate,
+    int TotalTracks,
+    string? ImageUrl,
+    string AlbumType = "album",
+    string? PrimaryArtistId = null);
+
+public sealed record SpotifySearchBundle(
+    List<SpotifyTrackItem> Tracks,
+    List<SpotifyArtistItem> Artists,
+    List<SpotifyAlbumItem> Albums,
+    List<SpotifyPlaylistItem> Playlists);
+
+public sealed record LastFmArtistProfile(
+    string Name,
+    string? BioSummary,
+    long Listeners,
+    long PlayCount,
+    List<string> Tags,
+    List<string> SimilarArtistNames);
+
+public sealed record RemMixDescriptor(
+    string Key,
+    string Title,
+    string Subtitle,
+    string Badge,
+    string AccentHex,
+    DateTime GeneratedAtUtc,
+    List<SpotifyTrackItem> Tracks);
 
 public sealed record SpotifyPlaylistItem(
     string Id,

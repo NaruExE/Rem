@@ -204,4 +204,31 @@ public static class IconCatalog
 
     public static Geometry Chat { get; } = StreamGeometry.Parse(
         "M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8l-4 3.5V18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2 5v2h12V8H6zm0 4v2h8v-2H6z");
+
+    public static Geometry Download { get; } = StreamGeometry.Parse(
+        "M12 3v10.2l3.6-3.6L17 11l-5 5-5-5 1.4-1.4 3.6 3.6V3h2zm-7 15h14v2H5v-2z");
+
+    public static Geometry ClipboardPaste { get; } = StreamGeometry.Parse(
+        "M19 3h-4.18A3 3 0 0 0 12 1a3 3 0 0 0-2.82 2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm7 16H5V5h2v2h10V5h2v14z");
+
+    public static Geometry FolderOpen { get; } = StreamGeometry.Parse(
+        "M2 5a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v2H9.8L7.5 19H4a2 2 0 0 1-2-2V5zm8.2 6H22l-2.3 8H7.9l2.3-8z");
+
+    public static Geometry Retry { get; } = StreamGeometry.Parse(
+        "M12 5V2L7 6l5 4V7a5 5 0 1 1-4.9 6H5.02A7 7 0 1 0 12 5z");
+
+    public static Geometry Disc { get; } = StreamGeometry.Parse(
+        "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 13.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm0-5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z");
+
+    public static Geometry Radio { get; } = StreamGeometry.Parse(
+        "M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-4.95-2.95a7 7 0 0 0 0 9.9l1.41-1.41a5 5 0 0 1 0-7.07L7.05 7.05zm9.9 0l-1.41 1.41a5 5 0 0 1 0 7.07l1.41 1.41a7 7 0 0 0 0-9.89zM4.22 4.22a11 11 0 0 0 0 15.56l1.42-1.42a9 9 0 0 1 0-12.72L4.22 4.22zm15.56 0l-1.42 1.42a9 9 0 0 1 0 12.72l1.42 1.42a11 11 0 0 0 0-15.56z");
+
+    public static Geometry Scissors { get; } = StreamGeometry.Parse(
+        "M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3h-3z");
+
+    public static Geometry Users { get; } = StreamGeometry.Parse(
+        "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z");
+
+    public static Geometry Send { get; } = StreamGeometry.Parse(
+        "M2.01 21L23 12 2.01 3 2 10l15 2-15 2z");
 }

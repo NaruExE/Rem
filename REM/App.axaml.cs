@@ -90,6 +90,9 @@ public sealed class App : Application
                 _actionLog.Log("Warning", $"Startup theme '{settings.ThemeName}' failed: {themeError}");
             }
 
+            var hasWallpaper = !string.IsNullOrWhiteSpace(settings.WallpaperPath) && File.Exists(settings.WallpaperPath);
+            _themeService.ApplyModuleTransparency(settings.ModuleOpacity, hasWallpaper);
+
             _mainViewModel = new MainWindowViewModel(
                 _database,
                 _themeService,

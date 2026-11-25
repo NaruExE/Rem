@@ -228,7 +228,7 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
             var soloistPath = _soloist.ResolveExecutablePath();
             SoloistPathText = soloistPath is not null
                 ? $"Found: {soloistPath}"
-                : "Not found (place soloist.exe in Tools\\ or PATH)";
+                : "Not installed yet (auto-downloads on start, or click Download / Update)";
 
             RefreshSpotifyStatus();
         }
@@ -342,6 +342,9 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     private bool _isClearingSpotifyCache;
+
+    [ObservableProperty]
+    private bool _isUpdatingSoloist;
 
     [ObservableProperty]
     private bool _showSpotifyPlaylistIcons = true;
@@ -629,6 +632,47 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         RefreshSpotifyStatus();
         FeedbackMessage = "Disconnected Spotify Web API session.";
         _onSettingsApplied(ModuleId);
+    }
+
+    [RelayCommand]
+    private async Task DownloadOrUpdateSoloistAsync()
+    {
+        if (IsUpdatingSoloist)
+        {
+            return;
+        }
+
+        IsUpdatingSoloist = true;
+        FeedbackMessage = "Downloading latest Spotify Soloist build...";
+        try
+        {
+            var (path, err) = await _soloist.EnsureExecutableAsync(
+                forceRedownload: true,
+                status => FeedbackMessage = status,
+                CancellationToken.None);
+
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                SoloistPathText = $"Found: {path}";
+                FeedbackMessage = "Downloaded latest soloist.exe cleanly.";
+                if (_soloist.HasApiKey)
+                {
+                    await _soloist.EnsureDaemonRunningAsync(CancellationToken.None);
+                }
+
+                RefreshSpotifyStatus();
+                _onSettingsApplied(ModuleId);
+            }
+            else
+            {
+                FeedbackMessage = string.Empty;
+                await _dialogService.ShowErrorAsync("Soloist Download Failed", "Could not download soloist.exe.", err);
+            }
+        }
+        finally
+        {
+            IsUpdatingSoloist = false;
+        }
     }
 
     [RelayCommand]

@@ -11,6 +11,10 @@ public sealed class DatabaseService
     public const string KeyWelcomeAudioPath = "WelcomeAudioPath";
     public const string KeyShowAppHeaderBar = "ShowAppHeaderBar";
     public const string KeyMinimizeToTray = "MinimizeToTray";
+    public const string KeyWallpaperPath = "WallpaperPath";
+    public const string KeyWallpaperDim = "WallpaperDim";
+    public const string KeyWallpaperSoftBlur = "WallpaperSoftBlur";
+    public const string KeyModuleOpacity = "ModuleOpacity";
     public const string KeyTwitchClientId = "TwitchClientId";
     public const string KeyTwitchClientSecret = "TwitchClientSecret";
     public const string KeyTwitchUserAccessToken = "TwitchUserAccessToken";
@@ -48,12 +52,30 @@ public sealed class DatabaseService
     public const string KeySpotifyShowAmbientGlow = "SpotifyShowAmbientGlow";
     public const string KeySpotifyShowRemArt = "SpotifyShowRemArt";
     public const string KeySpotifyRemArtFile = "SpotifyRemArtFile";
+    public const string KeySpotifyLyricsBgMode = "SpotifyLyricsBgMode";
+    public const string KeySpotifyLyricsSolidColor = "SpotifyLyricsSolidColor";
+    public const string KeySpotifyLyricsShowTimestamps = "SpotifyLyricsShowTimestamps";
+    public const string KeySpotifyLyricsAnimate = "SpotifyLyricsAnimate";
+    public const string KeySpotifyLyricsFontSize = "SpotifyLyricsFontSize";
+    public const string KeySpotifyLyricsCentered = "SpotifyLyricsCentered";
+    public const string KeySpotifyPreferDeepCuts = "SpotifyPreferDeepCuts";
     public const string KeyVideoVolume = "VideoVolume";
     public const string KeyVideoQuality = "VideoQuality";
     public const string KeyTmdbBearerToken = "TmdbBearerToken";
     public const string KeyMovieEmbedTemplate = "MovieEmbedTemplate";
     public const string KeyTvEmbedTemplate = "TvEmbedTemplate";
     public const string KeyMoviesBlockedAdDomains = "MoviesBlockedAdDomains";
+
+    private static readonly HashSet<string> SecretKeys = new(StringComparer.Ordinal)
+    {
+        KeyTwitchClientSecret,
+        KeyTwitchUserAccessToken,
+        KeySpotifyAccessToken,
+        KeySpotifyRefreshToken,
+        KeySpotifySoloistApiKey,
+        KeySpotifyLastFmApiKey,
+        KeyTmdbBearerToken
+    };
 
     private readonly string _connectionString;
 
@@ -188,11 +210,63 @@ public sealed class DatabaseService
                     UNIQUE (ProfileId, TmdbId, MediaType),
                     FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS MediaGrabberSettings (
+                    ProfileId INTEGER PRIMARY KEY,
+                    DefaultDownloadFolder TEXT NOT NULL,
+                    YtDlpPath TEXT NOT NULL,
+                    Aria2cPath TEXT NOT NULL,
+                    FfmpegPath TEXT NOT NULL,
+                    MaxConcurrentDownloads INTEGER NOT NULL DEFAULT 3,
+                    Aria2Connections INTEGER NOT NULL DEFAULT 16,
+                    FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS DownloadHistory (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProfileId INTEGER NOT NULL,
+                    Url TEXT NOT NULL,
+                    Title TEXT NOT NULL,
+                    Engine TEXT NOT NULL,
+                    FormatPreset TEXT NOT NULL,
+                    FilePath TEXT NULL,
+                    FileSizeBytes INTEGER NOT NULL DEFAULT 0,
+                    Status TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    CompletedAt TEXT NULL,
+                    FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS SpotifyPlayHistory (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TrackUri TEXT NOT NULL,
+                    TrackName TEXT NOT NULL,
+                    ArtistName TEXT NOT NULL,
+                    HourOfDay INTEGER NOT NULL,
+                    PlayedAt TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS SpotifyMixCache (
+                    MixKey TEXT PRIMARY KEY,
+                    Title TEXT NOT NULL,
+                    Subtitle TEXT NOT NULL,
+                    Badge TEXT NOT NULL,
+                    AccentHex TEXT NOT NULL,
+                    TracksJson TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS SpotifyTrackResolveCache (
+                    LookupKey TEXT PRIMARY KEY,
+                    TrackJson TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                );
                 """;
             cmd.ExecuteNonQuery();
         }
 
         EnsureProfilesAvatarPathColumn(connection);
+        MigratePlaintextSecretsToDpapi(connection);
     }
 
     public AppSettings LoadSettings()
@@ -227,6 +301,24 @@ public sealed class DatabaseService
                 case KeyMinimizeToTray:
                     settings.MinimizeToTray = !bool.TryParse(value, out var minTray) || minTray;
                     break;
+                case KeyWallpaperPath:
+                    settings.WallpaperPath = value;
+                    break;
+                case KeyWallpaperDim:
+                    if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var dim))
+                    {
+                        settings.WallpaperDim = Math.Clamp(dim, 0.0, 0.85);
+                    }
+                    break;
+                case KeyWallpaperSoftBlur:
+                    settings.WallpaperSoftBlur = bool.TryParse(value, out var blur) && blur;
+                    break;
+                case KeyModuleOpacity:
+                    if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var op))
+                    {
+                        settings.ModuleOpacity = Math.Clamp(op, 0.25, 1.0);
+                    }
+                    break;
             }
         }
 
@@ -240,7 +332,15 @@ public sealed class DatabaseService
         cmd.CommandText = "SELECT Value FROM AppSettings WHERE Key = $key;";
         cmd.Parameters.AddWithValue("$key", key);
         var result = cmd.ExecuteScalar();
-        return result is DBNull or null ? null : Convert.ToString(result, CultureInfo.InvariantCulture);
+        if (result is DBNull or null)
+        {
+            return null;
+        }
+
+        var str = Convert.ToString(result, CultureInfo.InvariantCulture);
+        return SecretKeys.Contains(key) && !string.IsNullOrEmpty(str)
+            ? SecretProtectionService.Unprotect(str)
+            : str;
     }
 
     public List<TwitchCategoryItem> GetProfileTwitchCategories(long profileId)
@@ -461,6 +561,10 @@ public sealed class DatabaseService
 
     public void SaveSetting(string key, string value)
     {
+        var stored = SecretKeys.Contains(key) && !string.IsNullOrEmpty(value)
+            ? SecretProtectionService.Protect(value)
+            : value;
+
         using var connection = OpenConnection();
         using var cmd = connection.CreateCommand();
         cmd.CommandText = """
@@ -469,7 +573,7 @@ public sealed class DatabaseService
             ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value;
             """;
         cmd.Parameters.AddWithValue("$key", key);
-        cmd.Parameters.AddWithValue("$value", value);
+        cmd.Parameters.AddWithValue("$value", stored);
         cmd.ExecuteNonQuery();
     }
 
@@ -904,6 +1008,10 @@ public sealed class DatabaseService
 
     public async Task SaveSettingAsync(string key, string value, CancellationToken cancellationToken = default)
     {
+        var stored = SecretKeys.Contains(key) && !string.IsNullOrEmpty(value)
+            ? SecretProtectionService.Protect(value)
+            : value;
+
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
@@ -912,7 +1020,7 @@ public sealed class DatabaseService
             ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value;
             """;
         cmd.Parameters.AddWithValue("$key", key);
-        cmd.Parameters.AddWithValue("$value", value);
+        cmd.Parameters.AddWithValue("$value", stored);
         await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -923,7 +1031,15 @@ public sealed class DatabaseService
         cmd.CommandText = "SELECT Value FROM AppSettings WHERE Key = $key;";
         cmd.Parameters.AddWithValue("$key", key);
         var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return result is DBNull or null ? null : Convert.ToString(result, CultureInfo.InvariantCulture);
+        if (result is DBNull or null)
+        {
+            return null;
+        }
+
+        var str = Convert.ToString(result, CultureInfo.InvariantCulture);
+        return SecretKeys.Contains(key) && !string.IsNullOrEmpty(str)
+            ? SecretProtectionService.Unprotect(str)
+            : str;
     }
 
     public async Task<MoviesTvSettings> GetMoviesTvSettingsAsync(CancellationToken cancellationToken = default)
@@ -1506,6 +1622,487 @@ public sealed class DatabaseService
         await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task AddVideoPlaylistItemsBulkAsync(
+        long playlistId,
+        IReadOnlyList<(string Title, string SourceUrl)> items,
+        CancellationToken cancellationToken = default)
+    {
+        if (playlistId <= 0 || items.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        long nextOrder = 0;
+        await using (var maxCmd = connection.CreateCommand())
+        {
+            maxCmd.Transaction = (SqliteTransaction)tx;
+            maxCmd.CommandText = "SELECT COALESCE(MAX(SortOrder) + 1, 0) FROM VideoPlaylistItems WHERE PlaylistId = $playlistId;";
+            maxCmd.Parameters.AddWithValue("$playlistId", playlistId);
+            var scalar = await maxCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (scalar is long l) nextOrder = l;
+            else if (scalar is int n) nextOrder = n;
+        }
+
+        foreach (var (title, sourceUrl) in items)
+        {
+            if (string.IsNullOrWhiteSpace(sourceUrl))
+            {
+                continue;
+            }
+
+            await using var insertCmd = connection.CreateCommand();
+            insertCmd.Transaction = (SqliteTransaction)tx;
+            insertCmd.CommandText = """
+                INSERT INTO VideoPlaylistItems (PlaylistId, Title, SourceUrl, Referer, LastPositionMs, DurationMs, SortOrder)
+                VALUES ($playlistId, $title, $url, NULL, 0, 0, $sortOrder);
+                """;
+            insertCmd.Parameters.AddWithValue("$playlistId", playlistId);
+            insertCmd.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(title) ? sourceUrl : title.Trim());
+            insertCmd.Parameters.AddWithValue("$url", sourceUrl.Trim());
+            insertCmd.Parameters.AddWithValue("$sortOrder", nextOrder++);
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<MediaGrabberSettings> GetMediaGrabberSettingsAsync(
+        long profileId,
+        CancellationToken cancellationToken = default)
+    {
+        var defaultFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Downloads",
+            "REM");
+
+        if (profileId <= 0)
+        {
+            return new MediaGrabberSettings(defaultFolder, string.Empty, string.Empty, string.Empty, 3, 16);
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT DefaultDownloadFolder, YtDlpPath, Aria2cPath, FfmpegPath, MaxConcurrentDownloads, Aria2Connections
+            FROM MediaGrabberSettings
+            WHERE ProfileId = $profileId;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var folder = reader.GetString(0);
+            return new MediaGrabberSettings(
+                DefaultDownloadFolder: string.IsNullOrWhiteSpace(folder) ? defaultFolder : folder,
+                YtDlpPath: reader.GetString(1),
+                Aria2cPath: reader.GetString(2),
+                FfmpegPath: reader.GetString(3),
+                MaxConcurrentDownloads: Math.Clamp(reader.GetInt32(4), 1, 8),
+                Aria2Connections: Math.Clamp(reader.GetInt32(5), 1, 16));
+        }
+
+        return new MediaGrabberSettings(defaultFolder, string.Empty, string.Empty, string.Empty, 3, 16);
+    }
+
+    public async Task SaveMediaGrabberSettingsAsync(
+        long profileId,
+        MediaGrabberSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        if (profileId <= 0)
+        {
+            return;
+        }
+
+        var folder = string.IsNullOrWhiteSpace(settings.DefaultDownloadFolder)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "REM")
+            : settings.DefaultDownloadFolder.Trim();
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO MediaGrabberSettings (
+                ProfileId, DefaultDownloadFolder, YtDlpPath, Aria2cPath, FfmpegPath, MaxConcurrentDownloads, Aria2Connections
+            )
+            VALUES ($profileId, $folder, $ytDlp, $aria2, $ffmpeg, $concurrent, $conns)
+            ON CONFLICT(ProfileId) DO UPDATE SET
+                DefaultDownloadFolder = excluded.DefaultDownloadFolder,
+                YtDlpPath = excluded.YtDlpPath,
+                Aria2cPath = excluded.Aria2cPath,
+                FfmpegPath = excluded.FfmpegPath,
+                MaxConcurrentDownloads = excluded.MaxConcurrentDownloads,
+                Aria2Connections = excluded.Aria2Connections;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$folder", folder);
+        cmd.Parameters.AddWithValue("$ytDlp", settings.YtDlpPath.Trim());
+        cmd.Parameters.AddWithValue("$aria2", settings.Aria2cPath.Trim());
+        cmd.Parameters.AddWithValue("$ffmpeg", settings.FfmpegPath.Trim());
+        cmd.Parameters.AddWithValue("$concurrent", Math.Clamp(settings.MaxConcurrentDownloads, 1, 8));
+        cmd.Parameters.AddWithValue("$conns", Math.Clamp(settings.Aria2Connections, 1, 16));
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<List<DownloadHistoryItem>> GetDownloadHistoryAsync(
+        long profileId,
+        CancellationToken cancellationToken = default)
+    {
+        var list = new List<DownloadHistoryItem>();
+        if (profileId <= 0)
+        {
+            return list;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT Id, ProfileId, Url, Title, Engine, FormatPreset, FilePath, FileSizeBytes, Status, CreatedAt, CompletedAt
+            FROM DownloadHistory
+            WHERE ProfileId = $profileId
+            ORDER BY CreatedAt DESC, Id DESC;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var createdAt = DateTime.TryParse(
+                reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var cDt)
+                ? cDt
+                : DateTime.UtcNow;
+
+            DateTime? completedAt = !reader.IsDBNull(10) && DateTime.TryParse(
+                reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var doneDt)
+                ? doneDt
+                : null;
+
+            list.Add(new DownloadHistoryItem(
+                Id: reader.GetInt64(0),
+                ProfileId: reader.GetInt64(1),
+                Url: reader.GetString(2),
+                Title: reader.GetString(3),
+                Engine: reader.GetString(4),
+                FormatPreset: reader.GetString(5),
+                FilePath: reader.IsDBNull(6) ? null : reader.GetString(6),
+                FileSizeBytes: reader.GetInt64(7),
+                Status: reader.GetString(8),
+                CreatedAt: createdAt,
+                CompletedAt: completedAt));
+        }
+
+        return list;
+    }
+
+    public async Task<long> InsertDownloadHistoryAsync(
+        long profileId,
+        string url,
+        string title,
+        string engine,
+        string formatPreset,
+        string status,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO DownloadHistory (ProfileId, Url, Title, Engine, FormatPreset, FilePath, FileSizeBytes, Status, CreatedAt, CompletedAt)
+            VALUES ($profileId, $url, $title, $engine, $preset, NULL, 0, $status, $createdAt, NULL);
+            SELECT last_insert_rowid();
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$url", url.Trim());
+        cmd.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(title) ? url.Trim() : title.Trim());
+        cmd.Parameters.AddWithValue("$engine", engine);
+        cmd.Parameters.AddWithValue("$preset", formatPreset);
+        cmd.Parameters.AddWithValue("$status", status);
+        cmd.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+    }
+
+    public async Task UpdateDownloadHistoryAsync(
+        long id,
+        string? title,
+        string? filePath,
+        long? fileSizeBytes,
+        string status,
+        DateTime? completedAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (id <= 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE DownloadHistory
+            SET Title = COALESCE($title, Title),
+                FilePath = COALESCE($filePath, FilePath),
+                FileSizeBytes = COALESCE($size, FileSizeBytes),
+                Status = $status,
+                CompletedAt = COALESCE($completedAt, CompletedAt)
+            WHERE Id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(title) ? DBNull.Value : title.Trim());
+        cmd.Parameters.AddWithValue("$filePath", string.IsNullOrWhiteSpace(filePath) ? DBNull.Value : filePath.Trim());
+        cmd.Parameters.AddWithValue("$size", fileSizeBytes.HasValue && fileSizeBytes.Value > 0 ? fileSizeBytes.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$status", status);
+        cmd.Parameters.AddWithValue("$completedAt", completedAt.HasValue ? completedAt.Value.ToString("O") : DBNull.Value);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task ClearCompletedDownloadHistoryAsync(long profileId, CancellationToken cancellationToken = default)
+    {
+        if (profileId <= 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM DownloadHistory WHERE ProfileId = $profileId AND Status = 'Completed';";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DeleteDownloadHistoryItemAsync(long id, CancellationToken cancellationToken = default)
+    {
+        if (id <= 0)
+        {
+            return;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM DownloadHistory WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RecordSpotifyPlayAsync(
+        string trackUri,
+        string trackName,
+        string artistName,
+        int hourOfDay,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(trackUri) || string.IsNullOrWhiteSpace(trackName))
+        {
+            return;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var insertCmd = connection.CreateCommand())
+        {
+            insertCmd.CommandText = """
+                INSERT INTO SpotifyPlayHistory (TrackUri, TrackName, ArtistName, HourOfDay, PlayedAt)
+                VALUES ($uri, $name, $artist, $hour, $playedAt);
+                """;
+            insertCmd.Parameters.AddWithValue("$uri", trackUri.Trim());
+            insertCmd.Parameters.AddWithValue("$name", trackName.Trim());
+            insertCmd.Parameters.AddWithValue("$artist", string.IsNullOrWhiteSpace(artistName) ? "Unknown Artist" : artistName.Trim());
+            insertCmd.Parameters.AddWithValue("$hour", Math.Clamp(hourOfDay, 0, 23));
+            insertCmd.Parameters.AddWithValue("$playedAt", DateTime.UtcNow.ToString("O"));
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Keep history bounded so SQLite stays tiny.
+        await using var pruneCmd = connection.CreateCommand();
+        pruneCmd.CommandText = """
+            DELETE FROM SpotifyPlayHistory
+            WHERE Id NOT IN (
+                SELECT Id FROM SpotifyPlayHistory ORDER BY Id DESC LIMIT 1200
+            );
+            """;
+        await pruneCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<List<(string TrackUri, string TrackName, string ArtistName, int HourOfDay, DateTime PlayedAt)>> GetSpotifyRecentPlayHistoryAsync(
+        int maxRows = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var list = new List<(string TrackUri, string TrackName, string ArtistName, int HourOfDay, DateTime PlayedAt)>();
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT TrackUri, TrackName, ArtistName, HourOfDay, PlayedAt
+            FROM SpotifyPlayHistory
+            ORDER BY Id DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$limit", Math.Clamp(maxRows, 1, 1200));
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var playedAt = DateTime.TryParse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+                ? dt
+                : DateTime.UtcNow;
+            list.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), playedAt));
+        }
+
+        return list;
+    }
+
+    public async Task<RemMixDescriptor?> GetSpotifyCachedMixAsync(
+        string mixKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(mixKey))
+        {
+            return null;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT Title, Subtitle, Badge, AccentHex, TracksJson, UpdatedAt
+            FROM SpotifyMixCache
+            WHERE MixKey = $key
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$key", mixKey.Trim());
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        try
+        {
+            var tracks = System.Text.Json.JsonSerializer.Deserialize<List<SpotifyTrackItem>>(reader.GetString(4)) ?? [];
+            var updatedAt = DateTime.TryParse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+                ? dt
+                : DateTime.MinValue;
+            return new RemMixDescriptor(
+                mixKey.Trim(),
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                updatedAt,
+                tracks);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task SaveSpotifyCachedMixAsync(
+        RemMixDescriptor mix,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(mix.Key))
+        {
+            return;
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(mix.Tracks);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO SpotifyMixCache (MixKey, Title, Subtitle, Badge, AccentHex, TracksJson, UpdatedAt)
+            VALUES ($key, $title, $subtitle, $badge, $accent, $json, $updated)
+            ON CONFLICT(MixKey) DO UPDATE SET
+                Title = excluded.Title,
+                Subtitle = excluded.Subtitle,
+                Badge = excluded.Badge,
+                AccentHex = excluded.AccentHex,
+                TracksJson = excluded.TracksJson,
+                UpdatedAt = excluded.UpdatedAt;
+            """;
+        cmd.Parameters.AddWithValue("$key", mix.Key);
+        cmd.Parameters.AddWithValue("$title", mix.Title);
+        cmd.Parameters.AddWithValue("$subtitle", mix.Subtitle);
+        cmd.Parameters.AddWithValue("$badge", mix.Badge);
+        cmd.Parameters.AddWithValue("$accent", mix.AccentHex);
+        cmd.Parameters.AddWithValue("$json", json);
+        cmd.Parameters.AddWithValue("$updated", mix.GeneratedAtUtc.ToString("O"));
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<SpotifyTrackItem?> GetResolvedSpotifyTrackAsync(
+        string lookupKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(lookupKey))
+        {
+            return null;
+        }
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT TrackJson
+            FROM SpotifyTrackResolveCache
+            WHERE LookupKey = $key
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$key", lookupKey.Trim());
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<SpotifyTrackItem>(reader.GetString(0));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task SaveResolvedSpotifyTrackAsync(
+        string lookupKey,
+        SpotifyTrackItem track,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(lookupKey) || string.IsNullOrWhiteSpace(track.Uri))
+        {
+            return;
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(track);
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = """
+                INSERT INTO SpotifyTrackResolveCache (LookupKey, TrackJson, UpdatedAt)
+                VALUES ($key, $json, $updated)
+                ON CONFLICT(LookupKey) DO UPDATE SET
+                    TrackJson = excluded.TrackJson,
+                    UpdatedAt = excluded.UpdatedAt;
+                """;
+            cmd.Parameters.AddWithValue("$key", lookupKey.Trim());
+            cmd.Parameters.AddWithValue("$json", json);
+            cmd.Parameters.AddWithValue("$updated", DateTime.UtcNow.ToString("O"));
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var pruneCmd = connection.CreateCommand();
+        pruneCmd.CommandText = """
+            DELETE FROM SpotifyTrackResolveCache
+            WHERE LookupKey NOT IN (
+                SELECT LookupKey FROM SpotifyTrackResolveCache ORDER BY UpdatedAt DESC LIMIT 1500
+            );
+            """;
+        await pruneCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static void EnsureProfilesAvatarPathColumn(SqliteConnection connection)
     {
         var hasAvatarPath = false;
@@ -1531,12 +2128,40 @@ public sealed class DatabaseService
         }
     }
 
+    private static void MigratePlaintextSecretsToDpapi(SqliteConnection connection)
+    {
+        var updates = new List<(string Key, string ProtectedValue)>();
+        using (var readCmd = connection.CreateCommand())
+        {
+            readCmd.CommandText = "SELECT Key, Value FROM AppSettings WHERE Value <> '';";
+            using var reader = readCmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var key = reader.GetString(0);
+                var val = reader.GetString(1);
+                if (SecretKeys.Contains(key) && !SecretProtectionService.IsProtected(val))
+                {
+                    updates.Add((key, SecretProtectionService.Protect(val)));
+                }
+            }
+        }
+
+        foreach (var (key, protectedVal) in updates)
+        {
+            using var upd = connection.CreateCommand();
+            upd.CommandText = "UPDATE AppSettings SET Value = $val WHERE Key = $key;";
+            upd.Parameters.AddWithValue("$key", key);
+            upd.Parameters.AddWithValue("$val", protectedVal);
+            upd.ExecuteNonQuery();
+        }
+    }
+
     private SqliteConnection OpenConnection()
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.CommandText = "PRAGMA foreign_keys = ON; PRAGMA cache_size = -2000; PRAGMA temp_store = MEMORY;";
         pragma.ExecuteNonQuery();
         return connection;
     }
@@ -1546,7 +2171,7 @@ public sealed class DatabaseService
         var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.CommandText = "PRAGMA foreign_keys = ON; PRAGMA cache_size = -2000; PRAGMA temp_store = MEMORY;";
         await pragma.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         return connection;
     }

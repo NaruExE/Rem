@@ -35,6 +35,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
     private MediaPlayer? _player;
     private Media? _currentMedia;
     private CancellationTokenSource? _autoSaveCts;
+    private CancellationTokenSource? _idleUnloadCts;
 
     private long _archivedReadBytes;
     private long _currentMediaLastReadBytes;
@@ -1433,6 +1434,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
 
     private void DisposeEngineLocked()
     {
+        CancelIdleUnload();
         if (_player is not null)
         {
             _player.Playing -= OnPlayerPlaying;
@@ -1546,8 +1548,55 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
     private void RaiseStateChanged() =>
         PlaybackStateChanged?.Invoke(this, GetSnapshot());
 
+    private void ScheduleIdleUnload()
+    {
+        CancelIdleUnload();
+        if (_disposed || !IsInitialized)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _idleUnloadCts, cts);
+        if (prev is not null)
+        {
+            try { prev.Cancel(); } catch { }
+            prev.Dispose();
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(10), cts.Token).ConfigureAwait(false);
+                if (!cts.IsCancellationRequested && !_disposed && !IsPlaying && IsInitialized)
+                {
+                    await StopAndDisposeEngineAsync().ConfigureAwait(false);
+                    _actionLog.Log("Video", "Auto-unloaded idle LibVLC video engine after 10 minutes.");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private void CancelIdleUnload()
+    {
+        var cts = Interlocked.Exchange(ref _idleUnloadCts, null);
+        if (cts is not null)
+        {
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }
+    }
+
     private void OnPlayerPlaying(object? sender, EventArgs e)
     {
+        CancelIdleUnload();
         IsPlaying = true;
         IsPaused = false;
         IsBuffering = false;
@@ -1558,6 +1607,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
     {
         IsPlaying = false;
         IsPaused = true;
+        ScheduleIdleUnload();
         RaiseStateChanged();
     }
 
@@ -1566,6 +1616,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
         IsPlaying = false;
         IsPaused = false;
         IsBuffering = false;
+        ScheduleIdleUnload();
         RaiseStateChanged();
     }
 
@@ -1608,6 +1659,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
                 }
             }
 
+            ScheduleIdleUnload();
             RaiseStateChanged();
             EndReached?.Invoke(this, finishedItemId);
         });

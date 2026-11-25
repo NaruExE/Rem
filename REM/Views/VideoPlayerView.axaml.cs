@@ -72,6 +72,7 @@ public partial class VideoPlayerView : UserControl
         {
             _boundVm.PickVideoFileRequested = null;
             _boundVm.PickSubtitleFileRequested = null;
+            _boundVm.PickFolderRequested = null;
             _boundVm.FullscreenChanged -= OnViewModelFullscreenChanged;
             _boundVm = null;
         }
@@ -81,6 +82,7 @@ public partial class VideoPlayerView : UserControl
             _boundVm = vm;
             vm.PickVideoFileRequested = PickVideoFileAsync;
             vm.PickSubtitleFileRequested = PickSubtitleFileAsync;
+            vm.PickFolderRequested = PickFolderAsync;
             vm.FullscreenChanged += OnViewModelFullscreenChanged;
 
             if (_isAttached)
@@ -538,5 +540,22 @@ public partial class VideoPlayerView : UserControl
         });
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    private async Task<string?> PickFolderAsync()
+    {
+        var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (provider is null)
+        {
+            return null;
+        }
+
+        var folders = await provider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose Media Folder for Playlist",
+            AllowMultiple = false
+        });
+
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 }

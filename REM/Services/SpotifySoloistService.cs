@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Net.Http;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -14,7 +16,15 @@ public sealed class SpotifySoloistService : IDisposable
 {
     public const int DefaultCacheSizeMb = 1024;
     private const string WsAddress = "127.0.0.1:9090";
+    private const string LatestSoloistWindowsZipUrl =
+        "https://soloist-builds.spotifycdn.com/soloist_release_windows_x86_64.zip";
     private static readonly Uri WsUri = new($"ws://{WsAddress}");
+    private static readonly SemaphoreSlim SoloistDownloadGate = new(1, 1);
+
+    public static string ManagedToolsDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "REM",
+        "Tools");
 
     [StructLayout(LayoutKind.Sequential)]
     private struct IoCounters
@@ -213,11 +223,145 @@ public sealed class SpotifySoloistService : IDisposable
         return null;
     }
 
+    private volatile string _lastStderrLine = string.Empty;
+
+    public async Task<(string? Path, string? Error)> EnsureExecutableAsync(
+        bool forceRedownload = false,
+        Action<string>? onStatus = null,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = forceRedownload ? null : ResolveExecutablePath();
+        if (!string.IsNullOrWhiteSpace(existing))
+        {
+            // Refresh managed builds older than 85 days (Spotify expires builds after 90 days).
+            var managedPath = Path.Combine(ManagedToolsDirectory, "soloist.exe");
+            if (!string.Equals(existing, managedPath, StringComparison.OrdinalIgnoreCase) ||
+                (DateTime.UtcNow - File.GetLastWriteTimeUtc(existing)).TotalDays < 85)
+            {
+                return (existing, null);
+            }
+
+            _actionLog.Log("Spotify", "Managed soloist.exe is >85 days old; refreshing build...");
+        }
+
+        await SoloistDownloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!forceRedownload)
+            {
+                var recheck = ResolveExecutablePath();
+                var managedPath = Path.Combine(ManagedToolsDirectory, "soloist.exe");
+                if (!string.IsNullOrWhiteSpace(recheck) &&
+                    (!string.Equals(recheck, managedPath, StringComparison.OrdinalIgnoreCase) ||
+                     (DateTime.UtcNow - File.GetLastWriteTimeUtc(recheck)).TotalDays < 85))
+                {
+                    return (recheck, null);
+                }
+            }
+
+            if (IsDaemonRunning)
+            {
+                StopDaemon();
+                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+            }
+
+            onStatus?.Invoke("Downloading Spotify Soloist (soloist.exe)...");
+            Directory.CreateDirectory(ManagedToolsDirectory);
+            var targetPath = Path.Combine(ManagedToolsDirectory, "soloist.exe");
+            var tempZip = Path.Combine(ManagedToolsDirectory, "soloist.zip.download");
+
+            try
+            {
+                if (File.Exists(tempZip))
+                {
+                    File.Delete(tempZip);
+                }
+
+                using var http = new HttpClient(new BandwidthCountingHandler())
+                {
+                    Timeout = TimeSpan.FromMinutes(4)
+                };
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("REM/1.0");
+
+                using var resp = await http.GetAsync(
+                    LatestSoloistWindowsZipUrl,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken).ConfigureAwait(false);
+                resp.EnsureSuccessStatusCode();
+
+                await using (var remoteStream = await resp.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+                await using (var localStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                {
+                    await remoteStream.CopyToAsync(localStream, cancellationToken).ConfigureAwait(false);
+                }
+
+                var extractedSha = string.Empty;
+                var foundBinary = await Task.Run(() =>
+                {
+                    using var archive = ZipFile.OpenRead(tempZip);
+                    foreach (var entry in archive.Entries)
+                    {
+                        if (!string.Equals(Path.GetFileName(entry.FullName), "soloist.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var stagePath = targetPath + ".tmp";
+                        entry.ExtractToFile(stagePath, overwrite: true);
+                        var (valid, sha, err) = ToolIntegrityHelper.ValidateExecutableAndHash(stagePath, minBytes: 500_000);
+                        if (!valid)
+                        {
+                            try { File.Delete(stagePath); } catch { }
+                            throw new InvalidOperationException($"Extracted soloist.exe failed integrity check: {err}");
+                        }
+
+                        extractedSha = sha;
+                        File.Move(stagePath, targetPath, overwrite: true);
+                        return true;
+                    }
+
+                    return false;
+                }, cancellationToken).ConfigureAwait(false);
+
+                if (!foundBinary || !File.Exists(targetPath))
+                {
+                    return (null, "soloist.exe was not found inside Spotify's downloaded archive.");
+                }
+
+                try { File.SetLastWriteTimeUtc(targetPath, DateTime.UtcNow); } catch { }
+                _actionLog.Log("Spotify", $"Downloaded soloist.exe to '{targetPath}' (SHA-256: {extractedSha[..16]}...).");
+                return (targetPath, null);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _actionLog.Log("Warning", $"Automatic Soloist download failed: {ex.Message}");
+                return (null, ex.Message);
+            }
+            finally
+            {
+                try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { }
+            }
+        }
+        finally
+        {
+            SoloistDownloadGate.Release();
+        }
+    }
+
     public async Task<(bool Started, string? Error)> EnsureDaemonRunningAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        var allowExpiredRetry = true;
+
+        startAttempt:
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string? exePath;
+        Process? launchedProc = null;
         try
         {
             if (_process is { HasExited: false })
@@ -226,10 +370,18 @@ public sealed class SpotifySoloistService : IDisposable
                 return (true, null);
             }
 
-            var exePath = ResolveExecutablePath();
+            exePath = ResolveExecutablePath();
             if (exePath is null)
             {
-                return (false, "soloist.exe was not found in Tools\\soloist.exe, next to REM.exe, or in PATH.");
+                var (downloaded, dlErr) = await EnsureExecutableAsync(
+                    forceRedownload: false,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(downloaded))
+                {
+                    return (false, $"Could not find or auto-download soloist.exe: {dlErr ?? "unknown error"}");
+                }
+
+                exePath = downloaded;
             }
 
             var apiKey = _database.GetSetting(DatabaseService.KeySpotifySoloistApiKey)?.Trim();
@@ -271,6 +423,7 @@ public sealed class SpotifySoloistService : IDisposable
             psi.ArgumentList.Add("-k");
             psi.ArgumentList.Add(apiKey);
 
+            _lastStderrLine = string.Empty;
             var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             proc.Exited += (_, _) => OnDaemonExited(proc);
 
@@ -281,17 +434,42 @@ public sealed class SpotifySoloistService : IDisposable
             }
 
             _process = proc;
+            launchedProc = proc;
             _ = DrainStreamAsync(proc.StandardOutput, isError: false);
             _ = DrainStreamAsync(proc.StandardError, isError: true);
 
             _actionLog.Log("Spotify", $"Started Spotify Soloist daemon (PID {proc.Id}).");
             EnsureWebSocketLoopStarted();
-            return (true, null);
         }
         finally
         {
             _lifecycleGate.Release();
         }
+
+        await Task.Delay(350, cancellationToken).ConfigureAwait(false);
+        if (launchedProc is { HasExited: true })
+        {
+            var exitCode = -1;
+            try { exitCode = launchedProc.ExitCode; } catch { }
+            if (allowExpiredRetry &&
+                (exitCode == 10 || _lastStderrLine.Contains("expired", StringComparison.OrdinalIgnoreCase)))
+            {
+                allowExpiredRetry = false;
+                _actionLog.Log("Spotify", "Detected expired soloist.exe build; auto-downloading latest release...");
+                var (refreshed, _) = await EnsureExecutableAsync(forceRedownload: true, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(refreshed))
+                {
+                    goto startAttempt;
+                }
+            }
+
+            return (false, string.IsNullOrWhiteSpace(_lastStderrLine)
+                ? $"soloist.exe exited immediately (code {exitCode})."
+                : $"soloist.exe exited (code {exitCode}): {_lastStderrLine}");
+        }
+
+        return (true, null);
     }
 
     public async Task<(bool Restarted, string? Error)> RestartDaemonAsync(CancellationToken cancellationToken)
@@ -502,8 +680,13 @@ public sealed class SpotifySoloistService : IDisposable
                         break;
                     }
 
-                    var json = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
-                    HandleWebSocketMessage(json);
+                    var payloadLen = (int)ms.Length;
+                    HandleWebSocketMessage(ms.GetBuffer().AsMemory(0, payloadLen));
+                    if (ms.Capacity > 128 * 1024)
+                    {
+                        ms.SetLength(0);
+                        ms.Capacity = 0;
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -532,11 +715,11 @@ public sealed class SpotifySoloistService : IDisposable
         }
     }
 
-    private void HandleWebSocketMessage(string json)
+    private void HandleWebSocketMessage(ReadOnlyMemory<byte> utf8Json)
     {
         try
         {
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(utf8Json);
             var root = doc.RootElement;
             var type = GetString(root, "type");
             if (string.IsNullOrWhiteSpace(type))
@@ -1341,7 +1524,12 @@ public sealed class SpotifySoloistService : IDisposable
                      line.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
                      line.Contains("invalid api key", StringComparison.OrdinalIgnoreCase)))
                 {
+                    _lastStderrLine = line;
                     _actionLog.Log("Warning", $"soloist: {line}");
+                }
+                else if (isError && !string.IsNullOrWhiteSpace(line))
+                {
+                    _lastStderrLine = line;
                 }
             }
         }

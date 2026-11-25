@@ -129,8 +129,21 @@ public static class BandwidthMonitor
 
 public sealed class BandwidthCountingHandler : DelegatingHandler
 {
-    public BandwidthCountingHandler() : base(new HttpClientHandler())
+    private static readonly SocketsHttpHandler SharedHandler = new()
     {
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(45),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        MaxConnectionsPerServer = 6,
+        AutomaticDecompression = System.Net.DecompressionMethods.All
+    };
+
+    public BandwidthCountingHandler() : base(SharedHandler)
+    {
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        // Do not dispose SharedHandler when individual HttpClients are disposed.
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(

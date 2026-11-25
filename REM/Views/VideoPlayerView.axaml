@@ -189,7 +189,7 @@
 
           <!-- Playlist Picker + Actions Header -->
           <StackPanel Grid.Row="0" Spacing="8" Margin="14,12,14,10">
-            <Grid ColumnDefinitions="*,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
               <TextBlock Grid.Column="0"
                          Text="Playlists"
                          FontSize="13"
@@ -197,12 +197,19 @@
                          VerticalAlignment="Center" />
               <Button Grid.Column="1"
                       Classes="rem-icon"
+                      Command="{Binding AddFolderAsPlaylistCommand}"
+                      Margin="0,0,2,0"
+                      ToolTip.Tip="Add folder as playlist (natural episode order)">
+                <PathIcon Data="{x:Static svc:IconCatalog.Folder}" Width="13" Height="13" />
+              </Button>
+              <Button Grid.Column="2"
+                      Classes="rem-icon"
                       Command="{Binding ToggleCreatePlaylistCommand}"
                       Margin="0,0,2,0"
                       ToolTip.Tip="Create new playlist">
                 <PathIcon Data="{x:Static svc:IconCatalog.Plus}" Width="13" Height="13" />
               </Button>
-              <Button Grid.Column="2"
+              <Button Grid.Column="3"
                       Classes="rem-icon"
                       Command="{Binding DeleteSelectedPlaylistCommand}"
                       IsEnabled="{Binding HasPlaylists}"
@@ -210,6 +217,11 @@
                 <PathIcon Data="{x:Static svc:IconCatalog.Trash}" Width="13" Height="13" />
               </Button>
             </Grid>
+
+            <CheckBox IsChecked="{Binding IncludeSubfoldersOnFolderAdd, Mode=TwoWay}"
+                      Content="Include subfolders when adding folder"
+                      FontSize="11"
+                      Margin="0,-2,0,0" />
 
             <!-- Inline Create Playlist Box -->
             <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsCreatingPlaylist}">

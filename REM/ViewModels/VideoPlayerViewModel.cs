@@ -705,6 +705,154 @@ public sealed partial class VideoPlayerViewModel : ObservableObject, IDisposable
         await PlayInputAsync();
     }
 
+    public Func<Task<string?>>? PickFolderRequested { get; set; }
+
+    [ObservableProperty]
+    private bool _includeSubfoldersOnFolderAdd;
+
+    private static readonly HashSet<string> FolderPlaylistExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".mp3", ".flac", ".wav", ".m4a"
+    };
+
+    [System.Runtime.InteropServices.DllImport("shlwapi.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int StrCmpLogicalW(string psz1, string psz2);
+
+    private static int CompareNaturalPaths(string a, string b)
+    {
+        try
+        {
+            return StrCmpLogicalW(a, b);
+        }
+        catch
+        {
+            return StringComparer.OrdinalIgnoreCase.Compare(a, b);
+        }
+    }
+
+    public async Task PlayDirectFileAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        MediaInputText = filePath;
+        RefererInputText = string.Empty;
+        await WaitForSurfaceAttachedAsync();
+        await _engine.PlaySourceAsync(filePath, cancellationToken: cancellationToken);
+        ShowTransientBanner($"Playing: {Path.GetFileName(filePath)}");
+    }
+
+    [RelayCommand]
+    private async Task AddFolderAsPlaylistAsync()
+    {
+        if (_disposed || IsBusy || PickFolderRequested is null || _profileId <= 0)
+        {
+            return;
+        }
+
+        var folder = await PickFolderRequested();
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var includeSubfolders = IncludeSubfoldersOnFolderAdd;
+        IsBusy = true;
+        StatusBannerText = "Scanning folder for media files...";
+        try
+        {
+            var discovered = await Task.Run(() =>
+            {
+                var option = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+                var files = Directory.EnumerateFiles(folder, "*.*", option)
+                    .Where(f => FolderPlaylistExtensions.Contains(Path.GetExtension(f)))
+                    .ToList();
+
+                files.Sort((x, y) =>
+                {
+                    var relX = Path.GetRelativePath(folder, x);
+                    var relY = Path.GetRelativePath(folder, y);
+                    return CompareNaturalPaths(relX, relY);
+                });
+
+                return files
+                    .Select(f => (Title: Path.GetFileNameWithoutExtension(f), SourceUrl: f))
+                    .ToList();
+            });
+
+            if (discovered.Count == 0)
+            {
+                ShowTransientBanner("No supported video or audio files found in that folder.");
+                return;
+            }
+
+            var folderName = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                folderName = folder;
+            }
+
+            VideoPlaylist? targetPlaylist = null;
+            var currentPl = SelectedPlaylist;
+            if (currentPl is not null)
+            {
+                var choice = await _dialogService.ShowAsync(new DialogRequest(
+                    DialogKind.Confirm,
+                    "Add Folder to Playlist",
+                    $"Found {discovered.Count} media files in '{folderName}'.\nCreate a new playlist or append to '{currentPl.Name}'?",
+                    null,
+                    [
+                        new DialogButtonOption("new", $"New \"{folderName}\"", IsPrimary: true),
+                        new DialogButtonOption("append", $"Append to \"{currentPl.Name}\""),
+                        new DialogButtonOption("cancel", "Cancel")
+                    ]));
+
+                if (choice == "cancel" || string.IsNullOrEmpty(choice))
+                {
+                    StatusBannerText = string.Empty;
+                    return;
+                }
+
+                if (choice == "append")
+                {
+                    targetPlaylist = currentPl;
+                }
+            }
+
+            if (targetPlaylist is null)
+            {
+                targetPlaylist = await _database.CreateVideoPlaylistAsync(_profileId, folderName);
+                _syncingPlaylists = true;
+                try
+                {
+                    Playlists.Add(targetPlaylist);
+                    SelectedPlaylist = targetPlaylist;
+                    OnPropertyChanged(nameof(HasPlaylists));
+                }
+                finally
+                {
+                    _syncingPlaylists = false;
+                }
+            }
+
+            await _database.AddVideoPlaylistItemsBulkAsync(targetPlaylist.Id, discovered);
+            await LoadPlaylistItemsAsync(targetPlaylist.Id);
+            ShowTransientBanner($"Added {discovered.Count} files to '{targetPlaylist.Name}'");
+            _actionLog.Log("Video", $"Added folder '{folderName}' ({discovered.Count} files) to playlist '{targetPlaylist.Name}'.");
+        }
+        catch (Exception ex)
+        {
+            ShowTransientBanner($"Folder scan failed: {ex.Message}");
+            _actionLog.Log("Warning", $"Add folder playlist error: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     [RelayCommand]
     private async Task PlayInputAsync()
     {

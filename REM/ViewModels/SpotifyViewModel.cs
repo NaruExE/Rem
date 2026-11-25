@@ -56,6 +56,7 @@ public sealed partial class SpotifyTrackRowViewModel : ObservableObject, IDispos
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCover))]
     private Bitmap? _coverBitmap;
+    private bool _ownsCover = true;
 
     [ObservableProperty]
     private bool _showCover = true;
@@ -71,17 +72,22 @@ public sealed partial class SpotifyTrackRowViewModel : ObservableObject, IDispos
 
     partial void OnShowCoverChanged(bool value) => OnPropertyChanged(nameof(HasCover));
 
-    public void SetCover(Bitmap? bmp)
+    public void SetCover(Bitmap? bmp, bool ownsCover = true)
     {
         if (_disposed)
         {
-            bmp?.Dispose();
+            if (ownsCover) bmp?.Dispose();
             return;
         }
 
         var prev = CoverBitmap;
+        var prevOwned = _ownsCover;
         CoverBitmap = bmp;
-        prev?.Dispose();
+        _ownsCover = ownsCover;
+        if (prevOwned && !ReferenceEquals(prev, bmp))
+        {
+            prev?.Dispose();
+        }
     }
 
     [RelayCommand]
@@ -98,8 +104,13 @@ public sealed partial class SpotifyTrackRowViewModel : ObservableObject, IDispos
         }
 
         _disposed = true;
-        CoverBitmap?.Dispose();
+        var prev = CoverBitmap;
+        var owned = _ownsCover;
         CoverBitmap = null;
+        if (owned)
+        {
+            prev?.Dispose();
+        }
     }
 }
 
@@ -258,6 +269,8 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     private readonly SpotifyWebApiService _webApi;
     private readonly LastFmService _lastFm;
     private readonly LrclibService _lrclib;
+    private readonly RemMixGeneratorService _mixGenerator;
+    private readonly IDownloadDispatcher? _downloadDispatcher;
     private readonly Action _onOpenSettings;
     private readonly DispatcherTimer _positionTimer;
 
@@ -266,6 +279,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _artCts;
     private CancellationTokenSource? _rowCoverCts;
     private CancellationTokenSource? _playlistCoverCts;
+    private CancellationTokenSource? _detailCoverCts;
     private CancellationTokenSource? _toastCts;
 
     private string? _lastTrackUri;
@@ -292,6 +306,8 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         SpotifyWebApiService webApi,
         LastFmService lastFm,
         LrclibService lrclib,
+        RemMixGeneratorService mixGenerator,
+        IDownloadDispatcher? downloadDispatcher,
         Action onOpenSettings)
     {
         _module = module;
@@ -303,10 +319,14 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         _webApi = webApi;
         _lastFm = lastFm;
         _lrclib = lrclib;
+        _mixGenerator = mixGenerator;
+        _downloadDispatcher = downloadDispatcher;
         _onOpenSettings = onOpenSettings;
 
         AccentBrush = new SolidColorBrush(Color.Parse(_module.AccentHex));
         AmbientGlowBrush = DefaultAmbientGlow;
+        InitializeLyricsCustomization();
+        SeedRemMixCards();
         ApplyDisplaySettings(triggerReload: false);
 
         var savedVol = int.TryParse(_database.GetSetting(DatabaseService.KeySpotifyVolume), out var v) ? Math.Clamp(v, 0, 100) : 80;
@@ -324,7 +344,6 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
 
         _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _positionTimer.Tick += (_, _) => OnPositionTimerTick();
-        _positionTimer.Start();
 
         RefreshModuleHeaderStatus();
         RefreshConnectionBadges();
@@ -405,9 +424,9 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsCollectionSection))]
     private SpotifyNavSection _activeSection = SpotifyNavSection.HomeFyp;
 
-    public bool IsHomeSection => ActiveSection == SpotifyNavSection.HomeFyp;
-    public bool IsSearchSection => ActiveSection == SpotifyNavSection.Search;
-    public bool IsCollectionSection => ActiveSection is SpotifyNavSection.LikedSongs or SpotifyNavSection.Playlist;
+    public bool IsHomeSection => ActiveSection == SpotifyNavSection.HomeFyp && ActiveDetailPage == SpotifyDetailPage.None;
+    public bool IsSearchSection => ActiveSection == SpotifyNavSection.Search && ActiveDetailPage == SpotifyDetailPage.None;
+    public bool IsCollectionSection => ActiveSection is SpotifyNavSection.LikedSongs or SpotifyNavSection.Playlist && ActiveDetailPage == SpotifyDetailPage.None;
 
     [ObservableProperty]
     private string _collectionTitle = "Liked Songs";
@@ -504,8 +523,31 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isCurrentTrackLiked;
 
+    private int _lastDisplayedSecond = -1;
+
     [ObservableProperty]
     private bool _isPlaying;
+
+    partial void OnIsPlayingChanged(bool value)
+    {
+        if (_disposed)
+        {
+            _positionTimer.Stop();
+            return;
+        }
+
+        if (value)
+        {
+            if (!_positionTimer.IsEnabled)
+            {
+                _positionTimer.Start();
+            }
+        }
+        else
+        {
+            _positionTimer.Stop();
+        }
+    }
 
     [ObservableProperty]
     private bool _isShuffled;
@@ -624,6 +666,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SelectHomeAsync()
     {
+        ResetToStandardSection();
         ActiveSection = SpotifyNavSection.HomeFyp;
         DeselectPlaylists();
         if (FypTracks.Count == 0)
@@ -635,6 +678,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SelectSearch()
     {
+        ResetToStandardSection();
         ActiveSection = SpotifyNavSection.Search;
         DeselectPlaylists();
     }
@@ -642,6 +686,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SelectLikedSongsAsync()
     {
+        ResetToStandardSection();
         ActiveSection = SpotifyNavSection.LikedSongs;
         DeselectPlaylists();
         await LoadLikedSongsAsync();
@@ -659,6 +704,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
             return;
         }
 
+        ResetToStandardSection();
         ActiveSection = SpotifyNavSection.Search;
         DeselectPlaylists();
 
@@ -673,16 +719,38 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         FeedMessage = string.Empty;
         try
         {
-            var hits = await _webApi.SearchTracksAsync(query, 10, ct);
+            var bundle = await _webApi.SearchAllAsync(query, 10, ct);
             ClearTrackCollection(SearchTracks);
-            for (var i = 0; i < hits.Count; i++)
+            for (var i = 0; i < bundle.Tracks.Count; i++)
             {
-                SearchTracks.Add(new SpotifyTrackRowViewModel(i + 1, hits[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
+                SearchTracks.Add(new SpotifyTrackRowViewModel(i + 1, bundle.Tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
             }
 
-            if (hits.Count == 0)
+            ClearArtistCards(SearchArtists);
+            foreach (var artist in bundle.Artists)
             {
-                FeedMessage = $"No Spotify tracks found for \"{query}\".";
+                SearchArtists.Add(new SpotifyArtistCardViewModel(artist, OpenArtistFromCardAsync));
+            }
+
+            ClearAlbumCards(SearchAlbums);
+            foreach (var album in bundle.Albums)
+            {
+                SearchAlbums.Add(new SpotifyAlbumCardViewModel(album, OpenAlbumFromCardAsync, PlayAlbumCardAsync));
+            }
+
+            ClearPlaylistCards(SearchPlaylists);
+            foreach (var pl in bundle.Playlists)
+            {
+                SearchPlaylists.Add(new SpotifyPlaylistCardViewModel(pl, OpenSearchedPlaylistAsync, PlayPlaylistFromMenuAsync, FollowSearchedPlaylistAsync));
+            }
+
+            NotifySearchVisibility();
+
+            if (bundle.Tracks.Count == 0 && bundle.Artists.Count == 0 && bundle.Albums.Count == 0 && bundle.Playlists.Count == 0)
+            {
+                FeedMessage = !string.IsNullOrWhiteSpace(_webApi.LastApiError)
+                    ? _webApi.LastApiError
+                    : $"No Spotify results found for \"{query}\".";
             }
             else
             {
@@ -692,6 +760,10 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                 {
                     _ = LoadRowCoversAsync(rows);
                 }
+
+                _ = LoadArtistCardPhotosAsync(SearchArtists.ToList());
+                _ = LoadAlbumCardCoversAsync(SearchAlbums.ToList());
+                _ = LoadPlaylistCardCoversAsync(SearchPlaylists.ToList());
             }
         }
         catch (OperationCanceledException)
@@ -720,12 +792,14 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var first = ActiveSection switch
-        {
-            SpotifyNavSection.HomeFyp => FypTracks.FirstOrDefault()?.Item,
-            SpotifyNavSection.Search => SearchTracks.FirstOrDefault()?.Item,
-            _ => CollectionTracks.FirstOrDefault()?.Item
-        };
+        var first = ActiveDetailPage != SpotifyDetailPage.None
+            ? CollectionTracks.FirstOrDefault()?.Item
+            : ActiveSection switch
+            {
+                SpotifyNavSection.HomeFyp => FypTracks.FirstOrDefault()?.Item,
+                SpotifyNavSection.Search => SearchTracks.FirstOrDefault()?.Item,
+                _ => CollectionTracks.FirstOrDefault()?.Item
+            };
 
         if (first is not null)
         {
@@ -975,11 +1049,17 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         ClearTrackCollection(FypTracks);
         ClearTrackCollection(SearchTracks);
         ClearTrackCollection(CollectionTracks);
+        ClearAllSharedCovers();
         ClearPlaylistCollection();
+        DisposeExtendedAssets();
+        RemMixCards.Clear();
+        LyricsColorSwatches.Clear();
+        _navHistory.Clear();
         LyricLines.Clear();
         LyricsSearchResults.Clear();
         QueueEntries.Clear();
 
+        RemCompanionBitmap = null;
         CurrentAlbumArt?.Dispose();
         CurrentAlbumArt = null;
         AmbientGlowBrush = DefaultAmbientGlow;
@@ -1070,7 +1150,15 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
 
     private async Task SelectPlaylistAsync(SpotifyPlaylistNavViewModel tab)
     {
+        if (!_isRestoringNav)
+        {
+            PushCurrentToNavHistory();
+        }
+
+        ResetToStandardSection();
         ActiveSection = SpotifyNavSection.Playlist;
+        _activePlaylistItem = tab.Item;
+        OnPropertyChanged(nameof(IsActivePlaylistEditable));
         _activeCollectionContextUri = tab.Item.Uri;
         foreach (var p in Playlists)
         {
@@ -1218,6 +1306,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                 FypSubtitle = "For You · Built from your Spotify taste + Last.fm similar tracks";
                 var recs = await _lastFm.GetFypRecommendationsAsync(seeds, 14, ct);
                 var seenUris = new HashSet<string>(StringComparer.Ordinal);
+                var networkCalls = 0;
 
                 foreach (var rec in recs)
                 {
@@ -1226,8 +1315,21 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                         break;
                     }
 
-                    var matches = await _webApi.SearchTracksAsync($"{rec.Artist} {rec.Title}", 1, ct);
-                    var hit = matches.FirstOrDefault();
+                    var key = $"{rec.Artist.Trim().ToLowerInvariant()}::{rec.Title.Trim().ToLowerInvariant()}";
+                    var hit = await _database.GetResolvedSpotifyTrackAsync(key, ct);
+                    if (hit is null)
+                    {
+                        if (_webApi.IsRateLimited) break;
+                        if (networkCalls > 0) await Task.Delay(240, ct);
+                        networkCalls++;
+                        var matches = await _webApi.SearchTracksAsync($"{rec.Artist} {rec.Title}", 1, ct);
+                        hit = matches.FirstOrDefault();
+                        if (hit is not null)
+                        {
+                            await _database.SaveResolvedSpotifyTrackAsync(key, hit, ct);
+                        }
+                    }
+
                     if (hit is not null && seenUris.Add(hit.Uri))
                     {
                         finalTracks.Add(hit);
@@ -1244,6 +1346,11 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
             if (finalTracks.Count == 0)
             {
                 finalTracks = seeds.Take(16).ToList();
+            }
+
+            if (finalTracks.Count == 0 && !string.IsNullOrWhiteSpace(_webApi.LastApiError))
+            {
+                FeedMessage = _webApi.LastApiError;
             }
 
             ClearTrackCollection(FypTracks);
@@ -1563,6 +1670,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
             LyricsSearchQuery = string.Empty;
 
             _ = LoadTrackExtrasAsync(track);
+            _ = RecordPlayInHistoryAsync(track);
             if (IsDrawerOpen && IsQueueDrawerActive)
             {
                 _ = _soloist.RequestQueueAsync(25);
@@ -1626,6 +1734,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                 using var ms = new MemoryStream(bytes, writable: false);
                 coverBmp = Bitmap.DecodeToWidth(ms, 180);
                 glowBrush = DominantColorExtractor.CreateAmbientGlowBrush(bytes);
+                UpdateAlbumTintFromBytes(bytes);
             }, cts.Token);
 
             Dispatcher.UIThread.Post(() =>
@@ -1797,6 +1906,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
             IsSyncedLyrics = true;
             LyricsStatusText = statusLabel;
             _lastTrackHasLoadedLyrics = true;
+            SyncLyricLinesVisualOptions();
             SyncActiveLyricIndex((long)GetLivePlaybackPositionMs());
         }
         else if (!string.IsNullOrWhiteSpace(result.PlainLyrics))
@@ -1900,6 +2010,8 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
+        LoadLyricsCustomizationFromSettings();
 
         foreach (var row in FypTracks.Concat(SearchTracks).Concat(CollectionTracks))
         {
@@ -2194,12 +2306,25 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                 break;
             }
 
-            if (string.IsNullOrWhiteSpace(row.Item.AlbumCoverUrl))
+            var url = row.Item.AlbumCoverUrl;
+            if (string.IsNullOrWhiteSpace(url))
             {
                 continue;
             }
 
-            var bmp = await _webApi.LoadSmallBitmapAsync(row.Item.AlbumCoverUrl, 64, cts.Token);
+            if (_sharedRowCovers.TryGetValue(url, out var existingBmp))
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!_disposed && !cts.IsCancellationRequested)
+                    {
+                        row.SetCover(existingBmp, ownsCover: false);
+                    }
+                });
+                continue;
+            }
+
+            var bmp = await _webApi.LoadSmallBitmapAsync(url, 44, cts.Token);
             if (bmp is not null)
             {
                 Dispatcher.UIThread.Post(() =>
@@ -2210,7 +2335,16 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
                         return;
                     }
 
-                    row.SetCover(bmp);
+                    if (_sharedRowCovers.TryGetValue(url, out var cached))
+                    {
+                        bmp.Dispose();
+                        row.SetCover(cached, ownsCover: false);
+                    }
+                    else
+                    {
+                        _sharedRowCovers[url] = bmp;
+                        row.SetCover(bmp, ownsCover: false);
+                    }
                 });
             }
         }
@@ -2227,8 +2361,18 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         var currentMs = Math.Clamp(_anchorPositionMs + elapsed, 0, SeekMaxSeconds * 1000.0);
         var currentSec = currentMs / 1000.0;
 
-        SeekPositionSeconds = currentSec;
-        PositionDisplay = FormatSeconds(currentSec);
+        if (Math.Abs(currentSec - SeekPositionSeconds) >= 0.5)
+        {
+            SeekPositionSeconds = currentSec;
+        }
+
+        var wholeSec = (int)currentSec;
+        if (wholeSec != _lastDisplayedSecond)
+        {
+            _lastDisplayedSecond = wholeSec;
+            PositionDisplay = FormatSeconds(currentSec);
+        }
+
         SyncActiveLyricIndex((long)currentMs);
     }
 
@@ -2257,6 +2401,12 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         for (var i = 0; i < LyricLines.Count; i++)
         {
             var shouldBeActive = i == activeIdx;
+            var shouldBePast = activeIdx >= 0 && i < activeIdx;
+            if (LyricLines[i].IsPast != shouldBePast)
+            {
+                LyricLines[i].IsPast = shouldBePast;
+            }
+
             if (LyricLines[i].IsActive != shouldBeActive)
             {
                 LyricLines[i].IsActive = shouldBeActive;
@@ -2307,6 +2457,7 @@ public sealed partial class SpotifyViewModel : ObservableObject, IDisposable
         }
 
         items.Clear();
+        ClearUnusedSharedCovers(items);
     }
 
     private CancellationToken ResetWorkToken()

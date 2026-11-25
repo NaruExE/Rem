@@ -1,0 +1,285 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:m="using:REM.Models"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.WatchPartyView"
+             x:DataType="vm:WatchPartyViewModel">
+
+  <Grid Background="{DynamicResource AppBackgroundBrush}" RowDefinitions="Auto,*,Auto">
+
+    <!-- Row 0: Hideable Top Module Header -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding IsHeaderVisible}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="34" Height="34"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{Binding AccentBrush}">
+          <PathIcon Data="{Binding IconGeometry}"
+                    Width="16" Height="16"
+                    Foreground="#FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+              <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+            </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}" ToolTip.Tip="Keep room, tunnel &amp; VLC sync alive in background">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              <TextBlock Text="Headless" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+              <TextBlock Text="Pause" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-danger" Command="{Binding KillCommand}" ToolTip.Tip="Close room, kill cloudflared tunnel &amp; unload">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+              <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+              <TextBlock Text="Hub" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Row 1: Room Controls + Synced VLC Controls | Chat -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,340" Margin="20,16">
+
+      <!-- Left Column: Room + Playback Sync -->
+      <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled" Margin="0,0,16,0">
+        <StackPanel Spacing="12" Margin="0,0,4,0">
+
+          <!-- Room Setup / Status Card -->
+          <Border Classes="rem-card" Padding="16">
+            <StackPanel Spacing="12">
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsHostTab}" Command="{Binding SelectHostTabCommand}" Content="Host Room" Padding="14,7" FontSize="12.5" FontWeight="SemiBold" />
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsJoinTab}" Command="{Binding SelectJoinTabCommand}" Content="Join Room" Padding="14,7" FontSize="12.5" FontWeight="SemiBold" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding ConnectionStatusText}" Classes="muted" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,8,0" MaxWidth="280" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="2" Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" IsVisible="{Binding !IsHeaderVisible}" ToolTip.Tip="Show status &amp; lifecycle bar">
+                  <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="14" Height="14" />
+                </Button>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*">
+                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+                  <TextBlock Text="Your Nickname" Classes="muted" FontSize="11" />
+                  <TextBox Classes="rem" Watermark="Your name..." Text="{Binding Nickname}" IsEnabled="{Binding CanStartOrJoin}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Text="Room PIN (optional)" Classes="muted" FontSize="11" />
+                  <TextBox Classes="rem" Watermark="Leave blank for open room" Text="{Binding RoomPin}" IsEnabled="{Binding CanStartOrJoin}" />
+                </StackPanel>
+              </Grid>
+
+              <!-- Host Section -->
+              <StackPanel Spacing="10" IsVisible="{Binding IsHostTab}">
+                <TextBlock Text="Tunnel / Network Mode" Classes="muted" FontSize="11" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="sidebar-tab" Classes.active="{Binding UseCloudflareTunnel}" Command="{Binding SelectCloudflareModeCommand}" IsEnabled="{Binding CanStartOrJoin}" Padding="12,7" FontSize="12">
+                    <TextBlock Text="Cloudflare Tunnel (CGNAT / No Port Forward)" />
+                  </Button>
+                  <Button Classes="sidebar-tab" Classes.active="{Binding IsDirectLanMode}" Command="{Binding SelectDirectLanModeCommand}" IsEnabled="{Binding CanStartOrJoin}" Padding="12,7" FontSize="12">
+                    <TextBlock Text="Direct LAN / Radmin IP" />
+                  </Button>
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding HostOnlyControls}" Content="Host-only playback controls (guests can chat only)" FontSize="12" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="rem-primary" Command="{Binding StartHostingCommand}" IsVisible="{Binding CanStartOrJoin}" Padding="16,9">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Users}" Foreground="{DynamicResource TextOnAccentBrush}" Width="14" Height="14" />
+                      <TextBlock Text="Start Hosting" Foreground="{DynamicResource TextOnAccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="rem-soft" IsVisible="{Binding IsConnecting}" IsEnabled="False" Content="Opening room &amp; tunnel..." Padding="16,9" />
+                  <Button Classes="rem-danger" Command="{Binding LeaveOrStopRoomCommand}" IsVisible="{Binding IsConnected}" Content="Stop Room" Padding="16,9" />
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasGeneratedRoomUrl}">
+                  <TextBox Grid.Column="0" Classes="rem" Text="{Binding GeneratedRoomUrl}" IsReadOnly="True" Margin="0,0,8,0" />
+                  <Button Grid.Column="1" Classes="rem-soft" Command="{Binding CopyRoomLinkCommand}" Padding="12,8" ToolTip.Tip="Copy invite link">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Copy}" Width="13" Height="13" />
+                      <TextBlock Text="Copy Link" FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+              </StackPanel>
+
+              <!-- Join Section -->
+              <StackPanel Spacing="10" IsVisible="{Binding IsJoinTab}">
+                <TextBlock Text="Host Room Link" Classes="muted" FontSize="11" />
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBox Grid.Column="0" Classes="rem" Watermark="Paste wss://...trycloudflare.com/ws or ws://..." Text="{Binding JoinUrlInput}" IsEnabled="{Binding CanStartOrJoin}" Margin="0,0,6,0" />
+                  <Button Grid.Column="1" Classes="rem-icon" Command="{Binding PasteRoomLinkCommand}" IsEnabled="{Binding CanStartOrJoin}" ToolTip.Tip="Paste link" Margin="0,0,6,0">
+                    <PathIcon Data="{x:Static svc:IconCatalog.ClipboardPaste}" Width="14" Height="14" />
+                  </Button>
+                  <Button Grid.Column="2" Classes="rem-primary" Command="{Binding JoinRoomCommand}" IsVisible="{Binding CanStartOrJoin}" Content="Join Room" Padding="14,8" FontWeight="SemiBold" />
+                  <Button Grid.Column="2" Classes="rem-danger" Command="{Binding LeaveOrStopRoomCommand}" IsVisible="{Binding IsConnected}" Content="Leave" Padding="14,8" />
+                </Grid>
+              </StackPanel>
+
+              <TextBlock Text="{Binding NoticeText}" Foreground="{DynamicResource DangerFgBrush}" FontSize="11.5" TextWrapping="Wrap" IsVisible="{Binding HasNotice}" />
+
+              <!-- Connected Peers -->
+              <StackPanel Spacing="4" IsVisible="{Binding !IsPeersEmpty}">
+                <TextBlock Text="In Room" Classes="muted" FontSize="11" />
+                <ItemsControl ItemsSource="{Binding Peers}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="x:String">
+                      <Border CornerRadius="999" Background="{DynamicResource SurfaceAltBrush}" Padding="10,4" Margin="0,0,6,6">
+                        <TextBlock Text="{Binding}" FontSize="11.5" FontWeight="SemiBold" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Synced VLC Media Card -->
+          <Border Classes="rem-card" Padding="16">
+            <StackPanel Spacing="12">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                  <TextBlock Text="Synced VLC Playback" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding VlcNowPlayingTitle}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryAccentBrush}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding VlcPlaybackStatusText}" Classes="muted" FontSize="11.5" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <Button Classes="rem-soft" Command="{Binding ToggleVlcPlayPauseCommand}" Padding="12,7" ToolTip.Tip="Play / Pause synced VLC">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Play}" Width="12" Height="12" />
+                      <TextBlock Text="Play / Pause" FontSize="12" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="rem-soft" Command="{Binding ForceSyncNowCommand}" IsVisible="{Binding IsConnected}" Padding="12,7" ToolTip.Tip="Force resync timestamp to everyone">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Refresh}" Width="12" Height="12" />
+                      <TextBlock Text="Force Sync" FontSize="12" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="rem-primary" Command="{Binding OpenVlcWindowCommand}" Padding="12,7" ToolTip.Tip="Switch to Video Player (VLC) view">
+                    <TextBlock Text="Open VLC" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="12" FontWeight="SemiBold" />
+                  </Button>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Grid.Column="0"
+                         Classes="rem"
+                         Watermark="Paste YouTube / Twitch / direct MP4 stream URL to sync with everyone..."
+                         Text="{Binding MediaUrlInput}"
+                         Margin="0,0,8,0">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding ShareMediaUrlCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+                <Button Grid.Column="1" Classes="rem-primary" Command="{Binding ShareMediaUrlCommand}" Content="Load &amp; Sync URL" Padding="12,8" FontWeight="SemiBold" Margin="0,0,8,0" />
+                <Button Grid.Column="2" Classes="rem-soft" Command="{Binding PickLocalVideoCommand}" Padding="12,8" ToolTip.Tip="Open a local video file (everyone opens the same file)">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{x:Static svc:IconCatalog.FolderOpen}" Width="13" Height="13" />
+                    <TextBlock Text="Local File" FontSize="12" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- Right Column: Room Chat -->
+      <Border Grid.Column="1" Classes="rem-card" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Row="0" Text="Party Chat &amp; Sync Log" FontSize="13.5" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+          <ListBox Grid.Row="1"
+                   ItemsSource="{Binding ChatMessages}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Padding="0"
+                   Margin="0,0,0,10">
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="m:WatchPartyChatMessage">
+                <Border Padding="8,5" CornerRadius="{DynamicResource ControlCornerRadius}" Background="{DynamicResource SurfaceAltBrush}" Margin="0,0,0,6">
+                  <StackPanel Spacing="2">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding Sender}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource PrimaryAccentBrush}" />
+                      <TextBlock Grid.Column="1" Text="{Binding Timestamp}" Classes="muted" FontSize="10" />
+                    </Grid>
+                    <TextBlock Text="{Binding Text}" FontSize="12" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     Classes="rem"
+                     Watermark="Send chat message..."
+                     Text="{Binding ChatInput}"
+                     IsEnabled="{Binding IsConnected}"
+                     Margin="0,0,6,0">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SendChatCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+            <Button Grid.Column="1" Classes="rem-primary" Command="{Binding SendChatCommand}" IsEnabled="{Binding IsConnected}" Padding="10,8" ToolTip.Tip="Send">
+              <PathIcon Data="{x:Static svc:IconCatalog.Send}" Foreground="{DynamicResource TextOnAccentBrush}" Width="14" Height="14" />
+            </Button>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Row 2: Bottom Info Bar -->
+    <Border Grid.Row="2"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="18,8">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding ConnectionStatusText}" Classes="muted" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1" Text="1.5s smart drift tolerance · Auto-kills cloudflared.exe on Kill" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

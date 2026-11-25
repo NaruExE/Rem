@@ -3,7 +3,7 @@ using REM.Modules;
 
 namespace REM.Services;
 
-public sealed class ModuleManager : IDisposable
+public sealed class ModuleManager : IDisposable, IDownloadDispatcher
 {
     private readonly List<IAppModule> _modules;
     private readonly Dictionary<string, IAppModule> _modulesById;
@@ -12,6 +12,9 @@ public sealed class ModuleManager : IDisposable
     private readonly VideoPlayerModule _videoPlayer;
     private readonly StreamWatcherModule _streamWatcher;
     private readonly MoviesTvModule _moviesTvModule;
+    private readonly MediaGrabberModule _mediaGrabber;
+    private readonly MediaStudioModule _mediaStudio;
+    private readonly WatchPartyModule _watchParty;
     private Action<string>? _openModuleSettingsRequested;
     private bool _disposed;
 
@@ -39,7 +42,8 @@ public sealed class ModuleManager : IDisposable
             soloist,
             spotifyWebApi,
             lastFm,
-            lrclib);
+            lrclib,
+            this);
 
         _audioStreamer = new AudioStreamerModule(
             database,
@@ -47,7 +51,8 @@ public sealed class ModuleManager : IDisposable
             dialogService,
             ytDlp,
             youtube,
-            twitch);
+            twitch,
+            this);
 
         _videoPlayer = new VideoPlayerModule(
             database,
@@ -63,12 +68,29 @@ public sealed class ModuleManager : IDisposable
             ytDlp,
             youtube,
             twitch,
-            videoResolver);
+            videoResolver,
+            this);
 
         _moviesTvModule = new MoviesTvModule(
             database,
             tmdb,
             dialogService,
+            actionLog);
+
+        _mediaGrabber = new MediaGrabberModule(
+            database,
+            ytDlp,
+            dialogService,
+            actionLog);
+
+        _mediaStudio = new MediaStudioModule(
+            database,
+            ytDlp,
+            actionLog);
+
+        _watchParty = new WatchPartyModule(
+            database,
+            _videoPlayer,
             actionLog);
 
         _modules =
@@ -78,8 +100,9 @@ public sealed class ModuleManager : IDisposable
             _videoPlayer,
             _streamWatcher,
             _moviesTvModule,
-            new CalendarModule(),
-            new TodoListModule()
+            _mediaGrabber,
+            _mediaStudio,
+            _watchParty
         ];
 
         _modulesById = _modules.ToDictionary(m => m.Id, StringComparer.Ordinal);
@@ -93,6 +116,12 @@ public sealed class ModuleManager : IDisposable
     internal AudioPlaybackEngine AudioEngine => _audioStreamer.AudioEngine;
     internal VideoPlayerModule VideoPlayerModule => _videoPlayer;
     internal MoviesTvModule MoviesTvModule => _moviesTvModule;
+    internal MediaGrabberModule MediaGrabberModule => _mediaGrabber;
+    internal MediaStudioModule MediaStudioModule => _mediaStudio;
+    internal WatchPartyModule WatchPartyModule => _watchParty;
+
+    public Task EnqueueAsync(string url, string? title, string formatPreset, CancellationToken cancellationToken = default) =>
+        _mediaGrabber.EnqueueFromDispatcherAsync(url, title, formatPreset, cancellationToken);
 
     public event EventHandler<(string ModuleId, ModuleState State)>? ModuleStateChanged;
 
@@ -114,6 +143,7 @@ public sealed class ModuleManager : IDisposable
         _videoPlayer.SetActiveProfile(profileId);
         _streamWatcher.SetActiveProfile(profileId);
         _moviesTvModule.SetActiveProfile(profileId);
+        _mediaGrabber.SetActiveProfile(profileId);
     }
 
     public void NotifyModuleSettingsChanged(string moduleId)
@@ -139,6 +169,10 @@ public sealed class ModuleManager : IDisposable
         else if (string.Equals(moduleId, _streamWatcher.Id, StringComparison.Ordinal))
         {
             _streamWatcher.OnViewLeft();
+        }
+        else if (string.Equals(moduleId, _spotifyModule.Id, StringComparison.Ordinal))
+        {
+            _spotifyModule.OnViewLeft();
         }
     }
 

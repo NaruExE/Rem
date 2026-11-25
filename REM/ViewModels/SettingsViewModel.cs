@@ -85,6 +85,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly Action<long?, bool> _onProfilesChanged;
     private readonly Action<bool> _onHeaderBarPreferenceChanged;
     private readonly Action _onReloadAssets;
+    private readonly Action _onWallpaperChanged;
     private readonly Action _onClose;
 
     private CancellationTokenSource? _previewCts;
@@ -105,6 +106,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Action<long?, bool> onProfilesChanged,
         Action<bool> onHeaderBarPreferenceChanged,
         Action onReloadAssets,
+        Action onWallpaperChanged,
         Action onClose)
     {
         _database = database;
@@ -119,6 +121,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _onProfilesChanged = onProfilesChanged;
         _onHeaderBarPreferenceChanged = onHeaderBarPreferenceChanged;
         _onReloadAssets = onReloadAssets;
+        _onWallpaperChanged = onWallpaperChanged;
         _onClose = onClose;
 
         var settings = _database.LoadSettings();
@@ -128,12 +131,38 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         MinimizeToTray = settings.MinimizeToTray;
         StartWithWindows = _startupService.IsEnabled();
         WelcomeAudioPath = settings.WelcomeAudioPath;
+        WallpaperPath = settings.WallpaperPath;
+        HasWallpaper = !string.IsNullOrWhiteSpace(settings.WallpaperPath) && File.Exists(settings.WallpaperPath);
+        WallpaperDisplayName = HasWallpaper
+            ? Path.GetFileName(settings.WallpaperPath)
+            : (string.IsNullOrWhiteSpace(settings.WallpaperPath) ? "None (Solid theme background)" : $"Missing: {Path.GetFileName(settings.WallpaperPath)}");
+        WallpaperDimPercent = Math.Round(settings.WallpaperDim * 100.0);
+        WallpaperSoftBlur = settings.WallpaperSoftBlur;
+        ModuleOpacityPercent = Math.Round(settings.ModuleOpacity * 100.0);
         ReloadThemesCore(settings.ThemeName);
         _suppressSave = false;
 
         RefreshAudioDisplay();
         ReloadProfilesList();
     }
+
+    [ObservableProperty]
+    private string _wallpaperPath = string.Empty;
+
+    [ObservableProperty]
+    private string _wallpaperDisplayName = "None (Solid theme background)";
+
+    [ObservableProperty]
+    private bool _hasWallpaper;
+
+    [ObservableProperty]
+    private double _wallpaperDimPercent = 35;
+
+    [ObservableProperty]
+    private bool _wallpaperSoftBlur;
+
+    [ObservableProperty]
+    private double _moduleOpacityPercent = 82;
 
     public ObservableCollection<ThemeDescriptor> AvailableThemes { get; } = [];
     public ObservableCollection<SettingsProfileRowViewModel> ProfilesList { get; } = [];
@@ -334,6 +363,59 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task OpenThemesFolderAsync() => OpenFolderInExplorerAsync(_themeService.ExternalThemesDirectory);
+
+    partial void OnWallpaperDimPercentChanged(double value)
+    {
+        if (_suppressSave || _disposed) return;
+        var norm = Math.Clamp(value, 0, 85) / 100.0;
+        _database.SaveSetting(DatabaseService.KeyWallpaperDim, norm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+        _onWallpaperChanged();
+    }
+
+    partial void OnWallpaperSoftBlurChanged(bool value)
+    {
+        if (_suppressSave || _disposed) return;
+        _database.SaveSetting(DatabaseService.KeyWallpaperSoftBlur, value.ToString());
+        _onWallpaperChanged();
+    }
+
+    partial void OnModuleOpacityPercentChanged(double value)
+    {
+        if (_suppressSave || _disposed) return;
+        var norm = Math.Clamp(value, 25, 100) / 100.0;
+        _database.SaveSetting(DatabaseService.KeyModuleOpacity, norm.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+        _themeService.ApplyModuleTransparency(norm, HasWallpaper);
+    }
+
+    [RelayCommand]
+    private async Task PickWallpaperAsync()
+    {
+        var path = await _pickImageFileAsync();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path) || _disposed)
+        {
+            return;
+        }
+
+        WallpaperPath = path;
+        HasWallpaper = true;
+        WallpaperDisplayName = Path.GetFileName(path);
+        _database.SaveSetting(DatabaseService.KeyWallpaperPath, path);
+        _themeService.ApplyModuleTransparency(Math.Clamp(ModuleOpacityPercent, 25, 100) / 100.0, hasWallpaper: true);
+        _onWallpaperChanged();
+        _actionLog.Log("Theme", $"Set dashboard wallpaper to '{WallpaperDisplayName}'.");
+    }
+
+    [RelayCommand]
+    private void ClearWallpaper()
+    {
+        WallpaperPath = string.Empty;
+        HasWallpaper = false;
+        WallpaperDisplayName = "None (Solid theme background)";
+        _database.SaveSetting(DatabaseService.KeyWallpaperPath, string.Empty);
+        _themeService.ApplyModuleTransparency(1.0, hasWallpaper: false);
+        _onWallpaperChanged();
+        _actionLog.Log("Theme", "Cleared dashboard wallpaper.");
+    }
 
     [RelayCommand]
     private Task OpenImagesFolderAsync() => OpenFolderInExplorerAsync(_imageAssets.ActiveImagesDirectory);

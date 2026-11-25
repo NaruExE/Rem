@@ -1,0 +1,349 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:REM.ViewModels"
+             xmlns:svc="using:REM.Services"
+             x:Class="REM.Views.MediaStudioView"
+             x:DataType="vm:MediaStudioViewModel"
+             DragDrop.AllowDrop="True">
+
+  <Grid Background="{DynamicResource AppBackgroundBrush}" RowDefinitions="Auto,*,Auto">
+
+    <!-- Row 0: Hideable Top Module Header -->
+    <Border Grid.Row="0"
+            IsVisible="{Binding IsHeaderVisible}"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Width="34" Height="34"
+                CornerRadius="{DynamicResource ControlCornerRadius}"
+                Background="{Binding AccentBrush}">
+          <PathIcon Data="{Binding IconGeometry}"
+                    Width="16" Height="16"
+                    Foreground="#FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="1" Spacing="2" Margin="12,0,14,0" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Border Classes="status-badge running-ui" VerticalAlignment="Center">
+              <TextBlock Text="{Binding StateLabel}" Classes="status-badge-text running-ui" />
+            </Border>
+          </StackPanel>
+          <TextBlock Text="{Binding StatusSummary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="rem-soft" Command="{Binding MinimizeToHeadlessCommand}" ToolTip.Tip="Detach UI &amp; keep FFmpeg encoding in background">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Headless}" Width="14" Height="14" />
+              <TextBlock Text="Headless" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-soft" Command="{Binding PauseModuleCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Pause}" Width="13" Height="13" />
+              <TextBlock Text="Pause" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-danger" Command="{Binding KillCommand}" ToolTip.Tip="Terminate active FFmpeg jobs &amp; unload">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Kill}" Foreground="{DynamicResource DangerFgBrush}" Width="13" Height="13" />
+              <TextBlock Text="Kill" Foreground="{DynamicResource DangerFgBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-btn" Command="{Binding BackToDashboardCommand}" Padding="12,7" FontSize="12">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{x:Static svc:IconCatalog.Home}" Width="13" Height="13" />
+              <TextBlock Text="Hub" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="rem-icon" Command="{Binding ToggleHeaderCommand}" ToolTip.Tip="Hide status bar">
+            <PathIcon Data="{x:Static svc:IconCatalog.ChevronUp}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Row 1: Main Workspace -->
+    <Grid Grid.Row="1" ColumnDefinitions="390,*" Margin="20,16">
+
+      <!-- Left Column: Input + Presets -->
+      <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled" Margin="0,0,16,0">
+        <StackPanel Spacing="12" Margin="0,0,4,0">
+
+          <!-- Input Card -->
+          <Border Classes="rem-card" Padding="14">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="Input Media" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Classes="rem-icon"
+                        Command="{Binding ToggleHeaderCommand}"
+                        IsVisible="{Binding !IsHeaderVisible}"
+                        ToolTip.Tip="Show status &amp; lifecycle bar">
+                  <PathIcon Data="{x:Static svc:IconCatalog.ChevronDown}" Width="14" Height="14" />
+                </Button>
+              </Grid>
+
+              <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      Padding="12">
+                <StackPanel Spacing="8">
+                  <TextBlock Text="{Binding SelectedFilesLabel}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ProbeSummary}"
+                             Classes="muted"
+                             FontSize="11"
+                             IsVisible="{Binding HasProbeSummary}"
+                             TextWrapping="Wrap" />
+                  <ProgressBar IsIndeterminate="{Binding IsProbing}"
+                               IsVisible="{Binding IsProbing}"
+                               Height="3" />
+                  <Button Classes="rem-soft"
+                          Command="{Binding BrowseInputFilesCommand}"
+                          HorizontalAlignment="Stretch"
+                          Padding="10,7">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                      <PathIcon Data="{x:Static svc:IconCatalog.FolderOpen}" Width="14" Height="14" />
+                      <TextBlock Text="Browse Files (or Drag &amp; Drop)" FontSize="12" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- Mode Tabs Card -->
+          <Border Classes="rem-card" Padding="14">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Operation Mode" FontSize="13.5" FontWeight="SemiBold" />
+
+              <WrapPanel Orientation="Horizontal">
+                <Button Classes="sidebar-tab" Classes.active="{Binding IsDiscordMode}" Command="{Binding SelectDiscordModeCommand}" Content="Discord MB" Padding="10,6" FontSize="11.5" Margin="0,0,6,6" />
+                <Button Classes="sidebar-tab" Classes.active="{Binding IsTrimMode}" Command="{Binding SelectTrimModeCommand}" Content="Trim / Cut" Padding="10,6" FontSize="11.5" Margin="0,0,6,6" />
+                <Button Classes="sidebar-tab" Classes.active="{Binding IsVideoMode}" Command="{Binding SelectVideoModeCommand}" Content="Video" Padding="10,6" FontSize="11.5" Margin="0,0,6,6" />
+                <Button Classes="sidebar-tab" Classes.active="{Binding IsAudioMode}" Command="{Binding SelectAudioModeCommand}" Content="Audio / Extract" Padding="10,6" FontSize="11.5" Margin="0,0,6,6" />
+                <Button Classes="sidebar-tab" Classes.active="{Binding IsImageMode}" Command="{Binding SelectImageModeCommand}" Content="Image" Padding="10,6" FontSize="11.5" Margin="0,0,6,6" />
+              </WrapPanel>
+
+              <!-- Discord Compress Settings -->
+              <StackPanel Spacing="8" IsVisible="{Binding IsDiscordMode}">
+                <TextBlock Text="Target Size (MB)" Classes="muted" FontSize="11.5" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Classes="rem-soft" Command="{Binding SetDiscordPresetMbCommand}" CommandParameter="8" Content="8 MB" Padding="10,5" FontSize="11.5" />
+                  <Button Classes="rem-soft" Command="{Binding SetDiscordPresetMbCommand}" CommandParameter="10" Content="10 MB" Padding="10,5" FontSize="11.5" />
+                  <Button Classes="rem-soft" Command="{Binding SetDiscordPresetMbCommand}" CommandParameter="25" Content="25 MB" Padding="10,5" FontSize="11.5" />
+                  <Button Classes="rem-soft" Command="{Binding SetDiscordPresetMbCommand}" CommandParameter="50" Content="50 MB" Padding="10,5" FontSize="11.5" />
+                </StackPanel>
+                <TextBox Classes="rem" Watermark="Custom MB (e.g. 10)" Text="{Binding TargetSizeMbText}" />
+                <TextBlock Text="Optional Trim Window (leave End empty for full video)" Classes="muted" FontSize="11" />
+                <Grid ColumnDefinitions="*,*">
+                  <TextBox Grid.Column="0" Classes="rem" Watermark="Start 00:00:00" Text="{Binding TrimStartText}" Margin="0,0,6,0" />
+                  <TextBox Grid.Column="1" Classes="rem" Watermark="End 00:01:00" Text="{Binding TrimEndText}" />
+                </Grid>
+              </StackPanel>
+
+              <!-- Trim / Clip Settings -->
+              <StackPanel Spacing="8" IsVisible="{Binding IsTrimMode}">
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0">
+                    <TextBlock Text="Start (hh:mm:ss)" Classes="muted" FontSize="11" />
+                    <TextBox Classes="rem" Watermark="00:00:00" Text="{Binding TrimStartText}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="End (hh:mm:ss)" Classes="muted" FontSize="11" />
+                    <TextBox Classes="rem" Watermark="00:00:30" Text="{Binding TrimEndText}" />
+                  </StackPanel>
+                </Grid>
+                <CheckBox IsChecked="{Binding UseStreamCopy}" Content="Fast lossless stream copy (-c copy, zero quality loss)" FontSize="12" />
+              </StackPanel>
+
+              <!-- Convert Video Settings -->
+              <StackPanel Spacing="8" IsVisible="{Binding IsVideoMode}">
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0">
+                    <TextBlock Text="Output Format" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding VideoFormatOptions}" SelectedItem="{Binding SelectedVideoFormat}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="Max Width" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding MaxWidthOptions}" SelectedItem="{Binding SelectedMaxWidth}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                </Grid>
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Encoding Quality" Classes="muted" FontSize="11" />
+                  <ComboBox Classes="rem" ItemsSource="{Binding VideoQualityOptions}" SelectedItem="{Binding SelectedVideoQuality}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+              </StackPanel>
+
+              <!-- Convert / Extract Audio Settings -->
+              <StackPanel Spacing="8" IsVisible="{Binding IsAudioMode}">
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0">
+                    <TextBlock Text="Audio Format" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding AudioFormatOptions}" SelectedItem="{Binding SelectedAudioFormat}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="Bitrate (kbps)" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding AudioBitrateOptions}" SelectedItem="{Binding SelectedAudioBitrate}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="Works on both audio files and video files (extracts clean audio track)." Classes="muted" FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+
+              <!-- Convert Image Settings -->
+              <StackPanel Spacing="8" IsVisible="{Binding IsImageMode}">
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0">
+                    <TextBlock Text="Image Format" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding ImageFormatOptions}" SelectedItem="{Binding SelectedImageFormat}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="Max Width" Classes="muted" FontSize="11" />
+                    <ComboBox Classes="rem" ItemsSource="{Binding MaxWidthOptions}" SelectedItem="{Binding SelectedMaxWidth}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+
+              <CheckBox IsChecked="{Binding StripMetadata}" Content="Strip metadata / EXIF tags" FontSize="12" />
+
+              <StackPanel Spacing="4">
+                <TextBlock Text="Output Folder (blank = same folder as source)" Classes="muted" FontSize="11" />
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBox Grid.Column="0" Classes="rem" Watermark="Same as input file..." Text="{Binding OutputFolder}" Margin="0,0,6,0" />
+                  <Button Grid.Column="1" Classes="rem-icon" Command="{Binding BrowseOutputFolderCommand}" ToolTip.Tip="Choose output folder" Margin="0,0,4,0">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Folder}" Width="14" Height="14" />
+                  </Button>
+                  <Button Grid.Column="2" Classes="rem-icon" Command="{Binding ClearOutputFolderCommand}" ToolTip.Tip="Reset to source folder">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="12" Height="12" />
+                  </Button>
+                </Grid>
+              </StackPanel>
+
+              <Button Classes="rem-primary"
+                      Command="{Binding StartConversionCommand}"
+                      HorizontalAlignment="Stretch"
+                      Padding="14,10">
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                  <PathIcon Data="{x:Static svc:IconCatalog.Scissors}" Foreground="{DynamicResource TextOnAccentBrush}" Width="14" Height="14" />
+                  <TextBlock Text="Convert / Queue Job" Foreground="{DynamicResource TextOnAccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Border>
+
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- Right Column: Job Queue -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+          <TextBlock Grid.Column="0" Text="Conversion Queue" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Classes="rem-soft" Command="{Binding ClearFinishedCommand}" Content="Clear Finished" Padding="12,6" FontSize="12" />
+        </Grid>
+
+        <Border Grid.Row="1" Classes="rem-card" Padding="24" IsVisible="{Binding IsJobsEmpty}" VerticalAlignment="Top">
+          <StackPanel Spacing="4" HorizontalAlignment="Center">
+            <TextBlock Text="No conversions queued yet." FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock Text="Select a video, audio track, or image on the left, pick Discord MB / Trim / Format, and click Convert."
+                       Classes="muted" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="420" />
+          </StackPanel>
+        </Border>
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Jobs}"
+                 IsVisible="{Binding !IsJobsEmpty}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate DataType="vm:MediaStudioJobItemViewModel">
+              <Border Classes="rem-card" Padding="14,12" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,12,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding Title}"
+                                 FontSize="13.5"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding OutputPath}" />
+                      <Border Grid.Column="1" CornerRadius="{DynamicResource TabCornerRadius}" Background="{DynamicResource SurfaceAltBrush}" Padding="8,2" Margin="8,0,0,0">
+                        <TextBlock Text="{Binding ModeLabel}" Foreground="{DynamicResource PrimaryAccentBrush}" FontSize="10.5" FontWeight="Bold" />
+                      </Border>
+                    </Grid>
+
+                    <ProgressBar Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding ProgressPercent}"
+                                 IsIndeterminate="{Binding IsProbing}"
+                                 IsVisible="{Binding ShowProgress}"
+                                 Height="5"
+                                 CornerRadius="3"
+                                 Foreground="#10B981"
+                                 Background="{DynamicResource BorderSoftBrush}" />
+
+                    <TextBlock Text="{Binding MetricsSummary}" Classes="muted" FontSize="11.5" FontWeight="SemiBold" />
+
+                    <TextBlock Text="{Binding ErrorMessage}"
+                               Foreground="{DynamicResource DangerFgBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding IsFailed}" />
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="rem-danger" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Padding="9,6" ToolTip.Tip="Cancel &amp; delete partial file">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Close}" Foreground="{DynamicResource DangerFgBrush}" Width="12" Height="12" />
+                    </Button>
+                    <Button Classes="rem-soft" Command="{Binding OpenFolderCommand}" IsVisible="{Binding CanOpenFolder}" Padding="10,6" ToolTip.Tip="Show output file in Explorer">
+                      <StackPanel Orientation="Horizontal" Spacing="5">
+                        <PathIcon Data="{x:Static svc:IconCatalog.FolderOpen}" Width="13" Height="13" />
+                        <TextBlock Text="Folder" FontSize="11" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Classes="rem-primary" Command="{Binding PlayInVlcCommand}" IsVisible="{Binding CanPlayInVlc}" Padding="10,6" ToolTip.Tip="Play result in VLC module">
+                      <StackPanel Orientation="Horizontal" Spacing="5">
+                        <PathIcon Data="{x:Static svc:IconCatalog.Play}" Foreground="{DynamicResource TextOnAccentBrush}" Width="11" Height="11" />
+                        <TextBlock Text="Play" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </Grid>
+
+    <!-- Row 2: Bottom Status Bar -->
+    <Border Grid.Row="2"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderSoftBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="18,8">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0"
+                   Text="{Binding StatusNotice}"
+                   Classes="muted"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock Grid.Column="1"
+                   Text="Uses lazy ffmpeg.exe + ffprobe.exe · Kills child processes on exit"
+                   Classes="muted"
+                   FontSize="11"
+                   VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

@@ -76,10 +76,10 @@ public sealed class YtDlpService
                     await remoteStream.CopyToAsync(localStream, cancellationToken).ConfigureAwait(false);
                 }
 
-                var info = new FileInfo(tempPath);
-                if (!info.Exists || info.Length < 1_000_000)
+                var (valid, _, _) = ToolIntegrityHelper.ValidateExecutableAndHash(tempPath, minBytes: 1_000_000);
+                if (!valid)
                 {
-                    if (info.Exists) info.Delete();
+                    try { File.Delete(tempPath); } catch { }
                     return null;
                 }
 

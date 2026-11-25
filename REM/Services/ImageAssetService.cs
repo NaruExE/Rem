@@ -56,6 +56,9 @@ public sealed class ImageAssetService : IDisposable
         }
     }
 
+    public Bitmap? LoadWallpaperBitmap(string? filePath, bool softBlur) =>
+        LoadScaledBitmap(filePath, softBlur ? 240 : 1440);
+
     public Bitmap? GetBrandImage(string fileName, int decodeWidth)
     {
         if (_disposed)

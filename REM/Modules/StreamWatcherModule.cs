@@ -12,7 +12,7 @@ namespace REM.Modules;
 /// Standalone "Stream Watcher (YT/Twitch)" module combining YouTube &amp; Twitch discovery feeds
 /// with a dedicated LibVLC hardware-decoded video player and toggleable live Twitch/7TV chat.
 /// </summary>
-public sealed class StreamWatcherModule : IAppModule
+public sealed class StreamWatcherModule : IAppModule, IHeaderConfigurableModule, ICloseableModule, IFullscreenModule
 {
     private readonly DatabaseService _database;
     private readonly ActionLogService _actionLog;
@@ -20,6 +20,7 @@ public sealed class StreamWatcherModule : IAppModule
     private readonly YtDlpService _ytDlp;
     private readonly YouTubeAudioService _youtube;
     private readonly TwitchHelixService _twitch;
+    private readonly IDownloadDispatcher _downloadDispatcher;
     private readonly VideoPlayerService _engine;
     private readonly TwitchChatService _chatService;
     private readonly TwitchEmoteCacheService _emoteCache;
@@ -38,7 +39,8 @@ public sealed class StreamWatcherModule : IAppModule
         YtDlpService ytDlp,
         YouTubeAudioService youtube,
         TwitchHelixService twitch,
-        VideoMediaResolverService videoResolver)
+        VideoMediaResolverService videoResolver,
+        IDownloadDispatcher downloadDispatcher)
     {
         _database = database;
         _actionLog = actionLog;
@@ -46,6 +48,7 @@ public sealed class StreamWatcherModule : IAppModule
         _ytDlp = ytDlp;
         _youtube = youtube;
         _twitch = twitch;
+        _downloadDispatcher = downloadDispatcher;
 
         _engine = new VideoPlayerService(
             database,
@@ -107,6 +110,7 @@ public sealed class StreamWatcherModule : IAppModule
                 _engine,
                 _chatService,
                 _emoteCache,
+                _downloadDispatcher,
                 () => OpenModuleSettingsRequested?.Invoke(Id));
 
             _activeViewModel.IsHeaderVisible = _database.LoadSettings().ShowAppHeaderBar;
@@ -238,7 +242,7 @@ public sealed class StreamWatcherModule : IAppModule
         GC.SuppressFinalize(this);
     }
 
-    internal void SetHeaderVisibility(bool visible)
+    public void SetHeaderVisibility(bool visible)
     {
         if (_activeViewModel is not null)
         {
@@ -246,7 +250,7 @@ public sealed class StreamWatcherModule : IAppModule
         }
     }
 
-    internal void AttachCloseCallback(Action closeToDashboard)
+    public void AttachCloseCallback(Action closeToDashboard)
     {
         if (_activeViewModel is not null)
         {
@@ -254,7 +258,7 @@ public sealed class StreamWatcherModule : IAppModule
         }
     }
 
-    internal void AttachFullscreenCallback(Action<bool> onFullscreenChanged) =>
+    public void AttachFullscreenCallback(Action<bool> onFullscreenChanged) =>
         _onFullscreenChanged = onFullscreenChanged;
 
     internal void OnViewLeft() => _activeViewModel?.ResetExpandedFeedsToDefault();

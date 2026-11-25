@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             Hide();
+            vm.OnWindowVisibilityChanged(false);
             vm.LogMinimizedToTray();
             return;
         }
@@ -94,6 +95,14 @@ public partial class MainWindow : Window
 
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
+        if (e.Property == WindowStateProperty || e.Property == IsVisibleProperty)
+        {
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.OnWindowVisibilityChanged(IsVisible && WindowState != WindowState.Minimized);
+            }
+        }
+
         if (e.Property != WindowStateProperty)
         {
             return;

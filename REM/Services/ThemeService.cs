@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using REM.Models;
 
 namespace REM.Services;
@@ -8,6 +9,15 @@ namespace REM.Services;
 public sealed class ThemeService
 {
     public const string DefaultThemeName = "Obsidian";
+
+    private static readonly string[] TransparentSurfaceKeys =
+    [
+        "AppBackgroundBrush",
+        "SidebarBackgroundBrush",
+        "SurfaceBrush",
+        "SurfaceAltBrush",
+        "CardBrush"
+    ];
 
     private static readonly ThemeDescriptor[] BuiltInThemes =
     [
@@ -21,6 +31,9 @@ public sealed class ThemeService
     ];
 
     private IResourceProvider? _activeThemeDictionary;
+    private readonly Dictionary<string, Color> _baseSurfaceColors = new(StringComparer.Ordinal);
+    private double _lastModuleOpacity = 1.0;
+    private bool _lastHasWallpaper;
 
     public ThemeService()
     {
@@ -120,7 +133,65 @@ public sealed class ThemeService
         merged.Add(loaded);
         _activeThemeDictionary = loaded;
         CurrentThemeName = descriptor.Name;
+        CaptureBaseSurfaceColors(loaded);
+        ApplyTransparencyToActiveDictionary();
         return errorMessage is null;
+    }
+
+    public void ApplyModuleTransparency(double moduleOpacity, bool hasWallpaper)
+    {
+        _lastModuleOpacity = Math.Clamp(moduleOpacity, 0.25, 1.0);
+        _lastHasWallpaper = hasWallpaper;
+        ApplyTransparencyToActiveDictionary();
+    }
+
+    private void CaptureBaseSurfaceColors(IResourceProvider provider)
+    {
+        _baseSurfaceColors.Clear();
+        if (provider is not ResourceDictionary dict)
+        {
+            return;
+        }
+
+        foreach (var key in TransparentSurfaceKeys)
+        {
+            if (dict.TryGetResource(key, null, out var res) && res is ISolidColorBrush brush)
+            {
+                _baseSurfaceColors[key] = brush.Color;
+            }
+        }
+    }
+
+    private void ApplyTransparencyToActiveDictionary()
+    {
+        if (_activeThemeDictionary is not ResourceDictionary dict || _baseSurfaceColors.Count == 0)
+        {
+            return;
+        }
+
+        var restoreOpaque = !_lastHasWallpaper || _lastModuleOpacity >= 0.99;
+        foreach (var key in TransparentSurfaceKeys)
+        {
+            if (!_baseSurfaceColors.TryGetValue(key, out var c))
+            {
+                continue;
+            }
+
+            if (restoreOpaque)
+            {
+                dict[key] = new SolidColorBrush(c);
+                continue;
+            }
+
+            byte alpha = key switch
+            {
+                "AppBackgroundBrush" => (byte)Math.Clamp(_lastModuleOpacity * 0.68 * 255.0, 18, 250),
+                "SidebarBackgroundBrush" => (byte)Math.Clamp((_lastModuleOpacity * 0.78 + 0.08) * 255.0, 45, 252),
+                _ => (byte)Math.Clamp((_lastModuleOpacity * 0.86 + 0.08) * 255.0, 58, 252)
+            };
+
+            dict[key] = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
+        }
     }
 
     private static IResourceProvider? TryLoadDescriptor(ThemeDescriptor descriptor, out string? errorMessage)

@@ -7,7 +7,7 @@ using REM.Views;
 
 namespace REM.Modules;
 
-public sealed class AudioStreamerModule : IAppModule
+public sealed class AudioStreamerModule : IAppModule, IHeaderConfigurableModule, ICloseableModule
 {
     private readonly DatabaseService _database;
     private readonly ActionLogService _actionLog;
@@ -15,6 +15,7 @@ public sealed class AudioStreamerModule : IAppModule
     private readonly YtDlpService _ytDlp;
     private readonly YouTubeAudioService _youtube;
     private readonly TwitchHelixService _twitch;
+    private readonly IDownloadDispatcher _downloadDispatcher;
     private readonly AudioPlaybackEngine _engine;
 
     private Control? _activeView;
@@ -29,7 +30,8 @@ public sealed class AudioStreamerModule : IAppModule
         DialogService dialogService,
         YtDlpService ytDlp,
         YouTubeAudioService youtube,
-        TwitchHelixService twitch)
+        TwitchHelixService twitch,
+        IDownloadDispatcher downloadDispatcher)
     {
         _database = database;
         _actionLog = actionLog;
@@ -37,6 +39,7 @@ public sealed class AudioStreamerModule : IAppModule
         _ytDlp = ytDlp;
         _youtube = youtube;
         _twitch = twitch;
+        _downloadDispatcher = downloadDispatcher;
 
         _engine = new AudioPlaybackEngine(_actionLog);
         if (int.TryParse(_database.GetSetting(DatabaseService.KeyAudioVolume), out var vol))
@@ -92,6 +95,7 @@ public sealed class AudioStreamerModule : IAppModule
                 _youtube,
                 _twitch,
                 _engine,
+                _downloadDispatcher,
                 () => OpenModuleSettingsRequested?.Invoke(Id));
 
             _activeViewModel.IsHeaderVisible = _database.LoadSettings().ShowAppHeaderBar;
@@ -161,7 +165,7 @@ public sealed class AudioStreamerModule : IAppModule
         GC.SuppressFinalize(this);
     }
 
-    internal void SetHeaderVisibility(bool visible)
+    public void SetHeaderVisibility(bool visible)
     {
         if (_activeViewModel is not null)
         {
@@ -169,7 +173,7 @@ public sealed class AudioStreamerModule : IAppModule
         }
     }
 
-    internal void AttachCloseCallback(Action closeToDashboard)
+    public void AttachCloseCallback(Action closeToDashboard)
     {
         if (_activeViewModel is not null)
         {

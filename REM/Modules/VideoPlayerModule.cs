@@ -11,7 +11,7 @@ namespace REM.Modules;
 /// <summary>
 /// Manages the Video Player (VLC) module lifecycle, SQLite playlists, and auto-advance playback.
 /// </summary>
-public sealed class VideoPlayerModule : IAppModule
+public sealed class VideoPlayerModule : IAppModule, IHeaderConfigurableModule, ICloseableModule, IFullscreenModule
 {
     private readonly DatabaseService _database;
     private readonly VideoMediaResolverService _resolver;
@@ -88,6 +88,23 @@ public sealed class VideoPlayerModule : IAppModule
             : items[0];
 
         await _engine.PlayPlaylistItemAsync(target, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PlayFileInUiAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        if (_activeViewModel is { } vm)
+        {
+            await vm.PlayDirectFileAsync(filePath, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await _engine.PlaySourceAsync(filePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task<bool> PlayNextInPlaylistAsync(CancellationToken cancellationToken = default)
@@ -192,7 +209,7 @@ public sealed class VideoPlayerModule : IAppModule
         return _activeView;
     }
 
-    internal void SetHeaderVisibility(bool visible)
+    public void SetHeaderVisibility(bool visible)
     {
         if (_activeViewModel is not null)
         {
@@ -200,7 +217,7 @@ public sealed class VideoPlayerModule : IAppModule
         }
     }
 
-    internal void AttachCloseCallback(Action closeToDashboard)
+    public void AttachCloseCallback(Action closeToDashboard)
     {
         if (_activeViewModel is not null)
         {
@@ -208,7 +225,7 @@ public sealed class VideoPlayerModule : IAppModule
         }
     }
 
-    internal void AttachFullscreenCallback(Action<bool> onFullscreenChanged)
+    public void AttachFullscreenCallback(Action<bool> onFullscreenChanged)
     {
         _onFullscreenChanged = onFullscreenChanged;
     }

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using REM.ViewModels;
 
@@ -9,12 +10,33 @@ namespace REM.Views;
 
 public partial class SpotifyView : UserControl
 {
+    private sealed class ScrollAnim
+    {
+        public ScrollViewer Viewer { get; init; } = null!;
+        public double StartY { get; set; }
+        public double TargetY { get; set; }
+        public DateTimeOffset StartTime { get; set; }
+        public bool Active { get; set; }
+    }
+
     private SpotifyViewModel? _boundVm;
+    private readonly DispatcherTimer _scrollTimer;
+    private readonly ScrollAnim _drawerAnim;
+    private readonly ScrollAnim _fullscreenAnim;
+    private DateTimeOffset _userScrollPauseUntil = DateTimeOffset.MinValue;
     private bool _isScrubbing;
 
     public SpotifyView()
     {
         InitializeComponent();
+
+        _drawerAnim = new ScrollAnim { Viewer = LyricsScrollViewer };
+        _fullscreenAnim = new ScrollAnim { Viewer = FullscreenLyricsScrollViewer };
+        _scrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _scrollTimer.Tick += OnScrollAnimationTick;
+
+        LyricsScrollViewer.AddHandler(PointerWheelChangedEvent, OnLyricsPointerWheel, RoutingStrategies.Tunnel);
+        FullscreenLyricsScrollViewer.AddHandler(PointerWheelChangedEvent, OnLyricsPointerWheel, RoutingStrategies.Tunnel);
 
         SeekSlider.AddHandler(PointerPressedEvent, OnSeekPointerPressed, RoutingStrategies.Tunnel);
         SeekSlider.AddHandler(PointerReleasedEvent, OnSeekPointerReleased, RoutingStrategies.Bubble, handledEventsToo: true);
@@ -36,6 +58,14 @@ public partial class SpotifyView : UserControl
         }
     }
 
+    private void OnLyricsPointerWheel(object? sender, PointerWheelEventArgs e)
+    {
+        _userScrollPauseUntil = DateTimeOffset.UtcNow.AddSeconds(3.5);
+        _drawerAnim.Active = false;
+        _fullscreenAnim.Active = false;
+        _scrollTimer.Stop();
+    }
+
     private void OnViewDataContextChanged(object? sender, EventArgs e)
     {
         UnsubscribeVm();
@@ -44,11 +74,19 @@ public partial class SpotifyView : UserControl
             _boundVm = vm;
             vm.ActiveLyricChanged += OnActiveLyricChanged;
         }
+        else if (DataContext is null)
+        {
+            SeekSlider.PropertyChanged -= OnSeekSliderPropertyChanged;
+            _scrollTimer.Tick -= OnScrollAnimationTick;
+        }
     }
 
     private void UnsubscribeVm()
     {
         _isScrubbing = false;
+        _drawerAnim.Active = false;
+        _fullscreenAnim.Active = false;
+        _scrollTimer.Stop();
         if (_boundVm is not null)
         {
             _boundVm.ActiveLyricChanged -= OnActiveLyricChanged;
@@ -96,14 +134,19 @@ public partial class SpotifyView : UserControl
 
     private void OnActiveLyricChanged(object? sender, int index)
     {
-        ScrollLyricIntoCenter(LyricsItemsControl, LyricsScrollViewer, index);
+        if (DateTimeOffset.UtcNow < _userScrollPauseUntil)
+        {
+            return;
+        }
+
+        ScrollLyricIntoCenter(LyricsItemsControl, LyricsScrollViewer, _drawerAnim, index);
         if (_boundVm is { IsLyricsFullscreen: true })
         {
-            ScrollLyricIntoCenter(FullscreenLyricsItemsControl, FullscreenLyricsScrollViewer, index);
+            ScrollLyricIntoCenter(FullscreenLyricsItemsControl, FullscreenLyricsScrollViewer, _fullscreenAnim, index);
         }
     }
 
-    private static void ScrollLyricIntoCenter(ItemsControl itemsControl, ScrollViewer scrollViewer, int index)
+    private void ScrollLyricIntoCenter(ItemsControl itemsControl, ScrollViewer scrollViewer, ScrollAnim anim, int index)
     {
         if (!scrollViewer.IsVisible)
         {
@@ -111,18 +154,72 @@ public partial class SpotifyView : UserControl
         }
 
         var container = itemsControl.ContainerFromIndex(index);
-        if (container is Control ctrl)
+        if (container is not Control ctrl)
         {
-            var topLeft = ctrl.TranslatePoint(new Point(0, 0), scrollViewer);
-            if (topLeft is { } pt && scrollViewer.Viewport.Height > 40)
+            return;
+        }
+
+        var topLeft = ctrl.TranslatePoint(new Point(0, 0), scrollViewer);
+        if (topLeft is { } pt && scrollViewer.Viewport.Height > 40)
+        {
+            var maxScroll = Math.Max(0, scrollViewer.Extent.Height - scrollViewer.Viewport.Height);
+            var targetY = Math.Clamp(scrollViewer.Offset.Y + pt.Y - (scrollViewer.Viewport.Height * 0.36), 0, maxScroll);
+
+            if (_boundVm is { LyricsAnimate: false } || Math.Abs(targetY - scrollViewer.Offset.Y) < 2)
             {
-                var targetY = Math.Max(0, scrollViewer.Offset.Y + pt.Y - (scrollViewer.Viewport.Height * 0.36));
+                anim.Active = false;
                 scrollViewer.Offset = new Vector(scrollViewer.Offset.X, targetY);
+                return;
             }
-            else if (ctrl.FindAncestorOfType<ScrollViewer>() is not null)
+
+            anim.StartY = scrollViewer.Offset.Y;
+            anim.TargetY = targetY;
+            anim.StartTime = DateTimeOffset.UtcNow;
+            anim.Active = true;
+            if (!_scrollTimer.IsEnabled)
             {
-                ctrl.BringIntoView();
+                _scrollTimer.Start();
             }
+        }
+        else if (ctrl.FindAncestorOfType<ScrollViewer>() is not null)
+        {
+            ctrl.BringIntoView();
+        }
+    }
+
+    private void OnScrollAnimationTick(object? sender, EventArgs e)
+    {
+        const double durationMs = 380.0;
+        var now = DateTimeOffset.UtcNow;
+        var anyActive = false;
+
+        foreach (var anim in new[] { _drawerAnim, _fullscreenAnim })
+        {
+            if (!anim.Active || !anim.Viewer.IsVisible)
+            {
+                anim.Active = false;
+                continue;
+            }
+
+            var elapsed = (now - anim.StartTime).TotalMilliseconds;
+            var t = Math.Clamp(elapsed / durationMs, 0, 1);
+            var eased = 1.0 - Math.Pow(1.0 - t, 3);
+            var y = anim.StartY + ((anim.TargetY - anim.StartY) * eased);
+            anim.Viewer.Offset = new Vector(anim.Viewer.Offset.X, y);
+
+            if (t >= 1.0)
+            {
+                anim.Active = false;
+            }
+            else
+            {
+                anyActive = true;
+            }
+        }
+
+        if (!anyActive)
+        {
+            _scrollTimer.Stop();
         }
     }
 
@@ -144,6 +241,20 @@ public partial class SpotifyView : UserControl
         queueItem.Click += (_, _) => _ = _boundVm.AddTrackToQueueFromMenuAsync(row.Item);
         menu.Items.Add(queueItem);
 
+        var radioItem = new MenuItem { Header = "Start Song Radio" };
+        radioItem.Click += (_, _) => _ = _boundVm.StartSongRadioAsync(row.Item);
+        menu.Items.Add(radioItem);
+
+        var artistItem = new MenuItem { Header = "Go to Artist" };
+        artistItem.Click += (_, _) => _ = _boundVm.OpenTrackArtistFromMenuAsync(row.Item);
+        menu.Items.Add(artistItem);
+
+        var albumItem = new MenuItem { Header = "Go to Album" };
+        albumItem.Click += (_, _) => _ = _boundVm.OpenTrackAlbumFromMenuAsync(row.Item);
+        menu.Items.Add(albumItem);
+
+        menu.Items.Add(new Separator());
+
         var likeItem = new MenuItem { Header = row.LikeMenuHeader };
         likeItem.Click += (_, _) => _ = _boundVm.ToggleLikeRowFromMenuAsync(row);
         menu.Items.Add(likeItem);
@@ -164,6 +275,23 @@ public partial class SpotifyView : UserControl
             }
         }
         menu.Items.Add(addToPlaylistRoot);
+
+        if (_boundVm.IsActivePlaylistEditable)
+        {
+            var removeFromPl = new MenuItem { Header = "Remove from this Playlist" };
+            removeFromPl.Click += (_, _) => _ = _boundVm.RemoveTrackFromActivePlaylistAsync(row);
+            menu.Items.Add(removeFromPl);
+        }
+
+        var grabRoot = new MenuItem { Header = "Download via Media Grabber" };
+        foreach (var preset in new[] { "MP3 Audio", "M4A Audio", "Best MP4" })
+        {
+            var captured = preset;
+            var presetItem = new MenuItem { Header = captured };
+            presetItem.Click += (_, _) => _ = _boundVm.DownloadTrackViaGrabberAsync(row.Item, captured);
+            grabRoot.Items.Add(presetItem);
+        }
+        menu.Items.Add(grabRoot);
 
         menu.Items.Add(new Separator());
 
@@ -209,6 +337,10 @@ public partial class SpotifyView : UserControl
         var pinItem = new MenuItem { Header = tab.IsPinned ? "Unpin from Top" : "Pin to Top" };
         pinItem.Click += (_, _) => _boundVm.TogglePinPlaylistFromMenu(tab);
         menu.Items.Add(pinItem);
+
+        var deleteItem = new MenuItem { Header = "Remove / Delete Playlist" };
+        deleteItem.Click += (_, _) => _ = _boundVm.DeleteOrUnfollowPlaylistAsync(tab.Item);
+        menu.Items.Add(deleteItem);
 
         menu.Items.Add(new Separator());
 

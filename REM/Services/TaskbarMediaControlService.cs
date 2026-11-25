@@ -115,6 +115,7 @@ public sealed class TaskbarMediaControlService : IDisposable
     private IntPtr _iconPlay;
     private IntPtr _iconPause;
     private IntPtr _iconNext;
+    private string _lastRenderedStateKey = string.Empty;
     private bool _disposed;
 
     public TaskbarMediaControlService(
@@ -271,6 +272,7 @@ public sealed class TaskbarMediaControlService : IDisposable
             if (hr >= 0)
             {
                 _buttonsAdded = true;
+                _lastRenderedStateKey = string.Empty;
                 UpdateButtonsAndTooltip();
             }
         }
@@ -296,8 +298,16 @@ public sealed class TaskbarMediaControlService : IDisposable
         try
         {
             var buttons = BuildCurrentButtons();
+            var tooltip = BuildTooltip();
+            var stateKey = $"{buttons[0].dwFlags}|{buttons[1].dwFlags}|{buttons[1].hIcon}|{buttons[2].dwFlags}|{tooltip}";
+            if (string.Equals(stateKey, _lastRenderedStateKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastRenderedStateKey = stateKey;
             _taskbarList.ThumbBarUpdateButtons(_hwnd, (uint)buttons.Length, buttons);
-            _taskbarList.SetThumbnailTooltip(_hwnd, BuildTooltip());
+            _taskbarList.SetThumbnailTooltip(_hwnd, tooltip);
         }
         catch
         {

@@ -36,6 +36,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
     private readonly VideoPlayerService _engine;
     private readonly TwitchChatService _chatService;
     private readonly TwitchEmoteCacheService _emoteCache;
+    private readonly IDownloadDispatcher _downloadDispatcher;
     private readonly Action _onOpenSettings;
 
     private long _profileId;
@@ -73,6 +74,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
         VideoPlayerService engine,
         TwitchChatService chatService,
         TwitchEmoteCacheService emoteCache,
+        IDownloadDispatcher downloadDispatcher,
         Action onOpenSettings)
     {
         _module = module;
@@ -86,6 +88,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
         _engine = engine;
         _chatService = chatService;
         _emoteCache = emoteCache;
+        _downloadDispatcher = downloadDispatcher;
         _onOpenSettings = onOpenSettings;
 
         AccentBrush = new SolidColorBrush(Color.Parse(module.AccentHex));
@@ -946,7 +949,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
             ClearYouTubeSearchCards(disposePager: false);
             foreach (var hit in hits)
             {
-                SearchResults.Add(new YouTubeSearchResultViewModel(hit, PlayYouTubeSearchItemAsync));
+                SearchResults.Add(new YouTubeSearchResultViewModel(hit, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync));
             }
 
             LastSearchQuery = input;
@@ -1080,7 +1083,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
             {
                 if (existingIds.Add(item.VideoId))
                 {
-                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync);
+                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync);
                     SearchResults.Add(card);
                     addedCards.Add(card);
                 }
@@ -1211,7 +1214,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
             {
                 if (existingIds.Add(item.VideoId))
                 {
-                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync);
+                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync);
                     YouTubeFeedItems.Add(card);
                     addedCards.Add(card);
                 }
@@ -1487,6 +1490,103 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
         YouTubeTabs.Clear();
         CategoryTabs.Clear();
         CategorySearchResults.Clear();
+    }
+
+    private async Task PromptAndDownloadYouTubeItemAsync(YouTubeSearchItem item)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var kindChoice = await _dialogService.ShowAsync(new DialogRequest(
+            DialogKind.Confirm,
+            "Download Media",
+            $"Choose download type for \"{item.Title}\":",
+            item.Channel,
+            [
+                new DialogButtonOption("audio", "Audio Only", IsPrimary: true),
+                new DialogButtonOption("video", "Video + Audio"),
+                new DialogButtonOption("cancel", "Cancel")
+            ]));
+
+        if (_disposed || kindChoice is null or "cancel")
+        {
+            return;
+        }
+
+        string? preset = null;
+        if (kindChoice == "audio")
+        {
+            var audioChoice = await _dialogService.ShowAsync(new DialogRequest(
+                DialogKind.Confirm,
+                "Choose Audio Format",
+                $"Select audio format for \"{item.Title}\":",
+                null,
+                [
+                    new DialogButtonOption("mp3", DownloadFormatPresets.Mp3Audio, IsPrimary: true),
+                    new DialogButtonOption("m4a", DownloadFormatPresets.M4aAudio),
+                    new DialogButtonOption("cancel", "Cancel")
+                ]));
+
+            preset = audioChoice switch
+            {
+                "mp3" => DownloadFormatPresets.Mp3Audio,
+                "m4a" => DownloadFormatPresets.M4aAudio,
+                _ => null
+            };
+        }
+        else if (kindChoice == "video")
+        {
+            var videoChoice = await _dialogService.ShowAsync(new DialogRequest(
+                DialogKind.Confirm,
+                "Choose Video Format",
+                $"Select video quality for \"{item.Title}\":",
+                null,
+                [
+                    new DialogButtonOption("best", DownloadFormatPresets.BestMp4, IsPrimary: true),
+                    new DialogButtonOption("1080", DownloadFormatPresets.P1080),
+                    new DialogButtonOption("cancel", "Cancel")
+                ]));
+
+            preset = videoChoice switch
+            {
+                "best" => DownloadFormatPresets.BestMp4,
+                "1080" => DownloadFormatPresets.P1080,
+                _ => null
+            };
+        }
+
+        if (_disposed || string.IsNullOrWhiteSpace(preset))
+        {
+            return;
+        }
+
+        try
+        {
+            await _downloadDispatcher.EnqueueAsync(item.Url, item.Title, preset);
+            var notice = $"Queued download ({preset}): {item.Title}";
+            ShowTransientBanner(notice);
+            ActivityNotice = notice;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(4000).ConfigureAwait(false);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!_disposed && string.Equals(ActivityNotice, notice, StringComparison.Ordinal))
+                    {
+                        ActivityNotice = string.Empty;
+                    }
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                await _dialogService.ShowErrorAsync("Download Failed", "Could not queue download.", ex.Message);
+            }
+        }
     }
 
     private Task PlayYouTubeSearchItemAsync(YouTubeSearchItem item) =>
@@ -2212,7 +2312,7 @@ public sealed partial class StreamWatcherViewModel : ObservableObject, IDisposab
             ClearYouTubeFeedCards();
             foreach (var item in items)
             {
-                YouTubeFeedItems.Add(new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync));
+                YouTubeFeedItems.Add(new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync));
             }
 
             _youtubeFeedLoaded = true;

@@ -11,7 +11,7 @@ namespace REM.Modules;
 /// Standalone Movies & TV module integrating TMDB v3 catalog/details,
 /// profile-scoped watchlist & continue-watching SQLite history, and a hardened lazy WebView2 host.
 /// </summary>
-public sealed class MoviesTvModule : IAppModule
+public sealed class MoviesTvModule : IAppModule, IHeaderConfigurableModule, ICloseableModule, IFullscreenModule
 {
     private readonly DatabaseService _database;
     private readonly TmdbService _tmdb;
@@ -120,7 +120,7 @@ public sealed class MoviesTvModule : IAppModule
         return _activeView;
     }
 
-    internal void SetHeaderVisibility(bool visible)
+    public void SetHeaderVisibility(bool visible)
     {
         if (_activeViewModel is not null)
         {
@@ -128,7 +128,7 @@ public sealed class MoviesTvModule : IAppModule
         }
     }
 
-    internal void AttachCloseCallback(Action closeToDashboard)
+    public void AttachCloseCallback(Action closeToDashboard)
     {
         if (_activeViewModel is not null)
         {
@@ -136,7 +136,7 @@ public sealed class MoviesTvModule : IAppModule
         }
     }
 
-    internal void AttachFullscreenCallback(Action<bool> onFullscreenChanged)
+    public void AttachFullscreenCallback(Action<bool> onFullscreenChanged)
     {
         _onFullscreenChanged = onFullscreenChanged;
     }

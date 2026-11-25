@@ -93,6 +93,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void LogMinimizedToTray() =>
         _actionLog.Log("System", "Window hidden to system tray (background apps remain active).");
 
+    public void OnWindowVisibilityChanged(bool isVisibleAndNotMinimized)
+    {
+        if (CurrentScreen is DashboardViewModel dashboardVm)
+        {
+            dashboardVm.SetWindowActive(isVisibleAndNotMinimized);
+        }
+    }
+
     public async Task StartAsync()
     {
         var settings = _database.LoadSettings();
@@ -199,8 +207,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
             HandleProfilesChanged,
             ApplyHeaderBarPreference,
             ReloadAssets,
+            RefreshWallpaperSettings,
             CloseSettings);
         _actionLog.Log("Navigation", "Opened Settings.");
+    }
+
+    private void RefreshWallpaperSettings()
+    {
+        if (CurrentScreen is DashboardViewModel dashboardVm)
+        {
+            dashboardVm.RefreshWallpaper();
+        }
     }
 
     public void CloseSettings()

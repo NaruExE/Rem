@@ -11,6 +11,7 @@ public sealed class AudioPlaybackEngine : IDisposable
     private LibVLC? _libVlc;
     private MediaPlayer? _player;
     private Media? _currentMedia;
+    private CancellationTokenSource? _idleUnloadCts;
     private long _archivedReadBytes;
     private long _currentMediaLastReadBytes;
     private bool _coreInitialized;
@@ -26,9 +27,26 @@ public sealed class AudioPlaybackEngine : IDisposable
     public ExtractedAudioTrack? CurrentTrack { get; private set; }
     public bool IsPlaying { get; private set; }
     public bool IsPaused { get; private set; }
+    public bool IsLooping { get; private set; }
     public bool IsLive => CurrentTrack?.IsLive ?? false;
     public double CurrentSeconds { get; private set; }
     public double DurationSeconds { get; private set; }
+
+    public void ToggleLoop()
+    {
+        IsLooping = !IsLooping;
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SkipRelativeSeconds(double deltaSeconds)
+    {
+        if (IsLive || DurationSeconds <= 0)
+        {
+            return;
+        }
+
+        SeekSeconds(Math.Max(0, CurrentSeconds + deltaSeconds));
+    }
 
     public int Volume
     {
@@ -343,8 +361,56 @@ public sealed class AudioPlaybackEngine : IDisposable
         }
     }
 
+    private void ScheduleIdleUnload()
+    {
+        CancelIdleUnload();
+        if (_disposed || _libVlc is null)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _idleUnloadCts, cts);
+        if (prev is not null)
+        {
+            try { prev.Cancel(); } catch { }
+            prev.Dispose();
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(10), cts.Token).ConfigureAwait(false);
+                if (!cts.IsCancellationRequested && !_disposed && !IsPlaying && _libVlc is not null)
+                {
+                    StopAndDisposeEngine();
+                    _actionLog.Log("Audio", "Auto-unloaded idle LibVLC audio engine after 10 minutes.");
+                    MemoryTrimService.ScheduleTrim(trimOsWorkingSet: true);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private void CancelIdleUnload()
+    {
+        var cts = Interlocked.Exchange(ref _idleUnloadCts, null);
+        if (cts is not null)
+        {
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }
+    }
+
     private void DisposeEngineLocked()
     {
+        CancelIdleUnload();
         if (_player is not null)
         {
             _player.Playing -= OnPlayerPlaying;
@@ -384,6 +450,7 @@ public sealed class AudioPlaybackEngine : IDisposable
 
     private void OnPlayerPlaying(object? sender, EventArgs e)
     {
+        CancelIdleUnload();
         IsPlaying = true;
         IsPaused = false;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
@@ -393,20 +460,41 @@ public sealed class AudioPlaybackEngine : IDisposable
     {
         IsPlaying = false;
         IsPaused = true;
+        ScheduleIdleUnload();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnPlayerStopped(object? sender, EventArgs e)
     {
         IsPlaying = false;
+        ScheduleIdleUnload();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnPlayerEndReached(object? sender, EventArgs e)
     {
+        var track = CurrentTrack;
+        if (IsLooping && !_disposed && track is { IsLive: false })
+        {
+            IsPlaying = false;
+            CurrentSeconds = 0;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await PlayAsync(track, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            });
+            return;
+        }
+
         IsPlaying = false;
         IsPaused = false;
         CurrentSeconds = 0;
+        ScheduleIdleUnload();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         PositionChanged?.Invoke(this, EventArgs.Empty);
     }

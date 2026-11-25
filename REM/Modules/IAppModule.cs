@@ -24,3 +24,28 @@ public interface IAppModule : IDisposable
     void Pause();
     void Kill();
 }
+
+public interface IHeaderConfigurableModule
+{
+    void SetHeaderVisibility(bool visible);
+}
+
+public interface ICloseableModule
+{
+    void AttachCloseCallback(Action closeToDashboard);
+}
+
+public interface IFullscreenModule
+{
+    void AttachFullscreenCallback(Action<bool> onFullscreenChanged);
+}
+
+public interface IVlcPlayMediaModule
+{
+    Action<string>? PlayCompletedMediaInVlcRequested { get; set; }
+}
+
+public interface IVlcOpenUiModule
+{
+    Action? OpenVlcUiRequested { get; set; }
+}

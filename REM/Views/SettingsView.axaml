@@ -296,6 +296,62 @@
                              TextWrapping="Wrap" />
                 </StackPanel>
               </Border>
+
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Dashboard Wallpaper &amp; Module Transparency"
+                                 FontSize="14"
+                                 FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding WallpaperDisplayName}"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                      <Button Classes="rem-primary"
+                              Command="{Binding PickWallpaperCommand}"
+                              Content="Choose Image" />
+                      <Button Classes="rem-danger"
+                              Command="{Binding ClearWallpaperCommand}"
+                              IsVisible="{Binding HasWallpaper}"
+                              Content="Clear" />
+                    </StackPanel>
+                  </Grid>
+
+                  <StackPanel Spacing="10" IsVisible="{Binding HasWallpaper}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="1">
+                        <TextBlock Text="Soft Blur (0-Cost Pre-Blur)" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="Smooths background wallpaper without hurting RAM or CPU" Classes="muted" FontSize="11" />
+                      </StackPanel>
+                      <ToggleSwitch Grid.Column="1"
+                                    IsChecked="{Binding WallpaperSoftBlur}"
+                                    OnContent="On"
+                                    OffContent="Off"
+                                    VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="Wallpaper Darkness" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding WallpaperDimPercent, StringFormat='{}{0:0}%'}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    </Grid>
+                    <Slider Minimum="0" Maximum="85" Value="{Binding WallpaperDimPercent}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="Module Opacity (Transparency)" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding ModuleOpacityPercent, StringFormat='{}{0:0}%'}" Classes="muted" FontSize="12" VerticalAlignment="Center" />
+                    </Grid>
+                    <Slider Minimum="25" Maximum="100" Value="{Binding ModuleOpacityPercent}" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
             </StackPanel>
 
             <!-- PAGE 3: PROFILES -->
