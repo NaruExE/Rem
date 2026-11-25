@@ -1,0 +1,55 @@
+name: Release REM (Windows x64)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag name (e.g. v1.0.1)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build & Publish win-x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore (win-x64)
+        run: dotnet restore REM/REM.csproj -r win-x64
+
+      - name: Publish self-contained win-x64
+        run: dotnet publish REM/REM.csproj --no-restore -c Release -r win-x64 --self-contained true -p:DebugType=None -p:DebugSymbols=false -o publish/REM-win-x64
+
+      - name: Clean debug symbols & package ZIP
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "publish/REM-win-x64" -Filter "*.pdb" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+          if (Test-Path "publish/REM-win-x64/Tools") {
+            Remove-Item "publish/REM-win-x64/Tools/*.exe" -Force -ErrorAction SilentlyContinue
+          }
+          Compress-Archive -Path "publish/REM-win-x64/*" -DestinationPath "REM-win-x64.zip" -Force
+          $hash = (Get-FileHash "REM-win-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  REM-win-x64.zip" | Out-File -FilePath "SHA256SUMS.txt" -Encoding ascii
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            REM-win-x64.zip
+            SHA256SUMS.txt

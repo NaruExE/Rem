@@ -25,11 +25,14 @@ Custom **Dashboard Wallpapers**, adjustable **Module Surface Transparency**, and
 
 ## Setup
 
-### Requirements
-- Windows 10 / 11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+### Download Portable Release (Recommended — No .NET Install Needed)
+1. Download **`REM-win-x64.zip`** from the [Latest Release](https://github.com/NaruExE/Rem/releases/latest).
+2. Right-click the ZIP → **Extract All...** into a normal folder (don't launch it from inside the ZIP).
+3. Double-click **`REM.exe`** *(if Windows SmartScreen shows "Windows protected your PC", click **More info → Run anyway**)*.
 
-### Build & Run
+### Build & Run from Source
+- Requires Windows 10 / 11 and [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+
 ```powershell
 git clone https://github.com/NaruExE/Rem.git
 cd Rem
