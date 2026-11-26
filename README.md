@@ -103,7 +103,7 @@ Click any dropdown below if you want to set up the optional API modules or YouTu
 ## Before You Panic (Quick FAQ)
 
 - **Windows Defender showed "Windows protected your PC"!**
-  Because Microsoft wants ~$300/yr for a code-signing certificate and I am not paying that for a free app lol. Click **More info -> Run anyway**, or build it straight from source if you're paranoid.
+  Because Microsoft wants ~$300/yr for a code-signing certificate and I am not paying that for a free app. Click **More info then Run anyway**, or build it straight from source if you're paranoid
 - **Where do `yt-dlp.exe`, `ffmpeg.exe`, `aria2c.exe`, `cloudflared.exe`, and `soloist.exe` come from?**
   REM doesn't bloat the git repo with EXEs. The first time you actually use a feature that needs one, REM downloads the official release, checks the Windows PE header + SHA-256, and drops it into `%LocalAppData%\REM\Tools\`.
 - **Where are my keys, playlists, and logs stored?**
