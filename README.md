@@ -2,11 +2,11 @@
 
 > *"Who's Rem?"*
 
-Are you tired of Chrome, Spotify, Discord, and three Electron apps eating every last gigabyte of your memory alive? (╯°□°）╯︵ ┻━┻
+Are you tired of Chrome, Spotify, Discord, and three Electron apps eating every last gigabyte of your memory alive?
 
 It's okay. **Rem is here to protect her sister, Ram!**
 
-**REM (RAM Efficient Manager)** is a native Windows desktop hub written in C# / .NET 8 + Avalonia UI so you can listen to music, watch streams, download videos, shrink clips for Discord, and host watch parties without leaving 9 GB of idle browser tabs rotting in the background.
+**REM (RAM Efficient Manager)** is a native Windows desktop hub written in C# / .NET 8 + Avalonia UI so you can listen to music, watch streams, download videos, shrink clips, and host watch parties without leaving 9 GB of idle browser tabs rotting in the background.
 
 Every app inside REM has three states you actually control:
 - **Open (UI):** Use it normally.
