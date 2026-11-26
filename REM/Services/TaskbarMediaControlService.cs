@@ -11,11 +11,31 @@ namespace REM.Services;
 public sealed class TaskbarMediaControlService : IDisposable
 {
     private const int WmCommand = 0x0111;
+    private const int WmHotKey = 0x0312;
+    private const int WmAppCommand = 0x0319;
     private const int ThbnClicked = 0x1800;
+    private const uint ModNoRepeat = 0x4000;
+
+    private const uint VkMediaNextTrack = 0xB0;
+    private const uint VkMediaPrevTrack = 0xB1;
+    private const uint VkMediaStop = 0xB2;
+    private const uint VkMediaPlayPause = 0xB3;
+
+    private const int AppCmdMediaNext = 11;
+    private const int AppCmdMediaPrev = 12;
+    private const int AppCmdMediaStop = 13;
+    private const int AppCmdMediaPlayPause = 14;
+    private const int AppCmdMediaPlay = 46;
+    private const int AppCmdMediaPause = 47;
 
     private const uint BtnPrevId = 1001;
     private const uint BtnPlayPauseId = 1002;
     private const uint BtnNextId = 1003;
+
+    private const uint HotKeyPlayPauseId = 0x5201;
+    private const uint HotKeyNextId = 0x5202;
+    private const uint HotKeyPrevId = 0x5203;
+    private const uint HotKeyStopId = 0x5204;
 
     private const uint ThbIcon = 0x00000002;
     private const uint ThbTooltip = 0x00000004;
@@ -28,7 +48,8 @@ public sealed class TaskbarMediaControlService : IDisposable
     {
         None,
         Spotify,
-        AudioStreamer
+        AudioStreamer,
+        VideoPlayer
     }
 
     [ComImport]
@@ -82,6 +103,14 @@ public sealed class TaskbarMediaControlService : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint RegisterWindowMessage(string lpString);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern IntPtr CreateBitmap(int nWidth, int nHeight, uint nPlanes, uint nBitsPerPel, int[] lpBits);
 
@@ -102,6 +131,7 @@ public sealed class TaskbarMediaControlService : IDisposable
     private readonly Window _window;
     private readonly SpotifySoloistService _soloist;
     private readonly AudioPlaybackEngine _audioEngine;
+    private readonly VideoPlayerService? _videoEngine;
     private readonly ActionLogService _actionLog;
     private readonly uint _taskbarCreatedMsg;
 
@@ -109,6 +139,7 @@ public sealed class TaskbarMediaControlService : IDisposable
     private IntPtr _hwnd;
     private bool _buttonsAdded;
     private bool _hookAttached;
+    private bool _hotKeysRegistered;
     private ActiveTarget _lastActiveTarget = ActiveTarget.None;
 
     private IntPtr _iconPrev;
@@ -116,17 +147,22 @@ public sealed class TaskbarMediaControlService : IDisposable
     private IntPtr _iconPause;
     private IntPtr _iconNext;
     private string _lastRenderedStateKey = string.Empty;
+    private string _lastSoloistPreKey = string.Empty;
+    private string _lastAudioPreKey = string.Empty;
+    private string _lastVideoPreKey = string.Empty;
     private bool _disposed;
 
     public TaskbarMediaControlService(
         Window window,
         SpotifySoloistService soloist,
         AudioPlaybackEngine audioEngine,
-        ActionLogService actionLog)
+        ActionLogService actionLog,
+        VideoPlayerService? videoEngine = null)
     {
         _window = window;
         _soloist = soloist;
         _audioEngine = audioEngine;
+        _videoEngine = videoEngine;
         _actionLog = actionLog;
 
         if (!OperatingSystem.IsWindows())
@@ -140,6 +176,10 @@ public sealed class TaskbarMediaControlService : IDisposable
         _window.Opened += OnWindowOpened;
         _soloist.StatusChanged += OnSoloistStatusChanged;
         _audioEngine.PlaybackStateChanged += OnAudioStateChanged;
+        if (_videoEngine is not null)
+        {
+            _videoEngine.PlaybackStateChanged += OnVideoStateChanged;
+        }
 
         if (_window.TryGetPlatformHandle() is { Handle: var h } && h != IntPtr.Zero)
         {
@@ -205,6 +245,70 @@ public sealed class TaskbarMediaControlService : IDisposable
             return IntPtr.Zero;
         }
 
+        if (msg == WmHotKey)
+        {
+            var id = unchecked((uint)wParam.ToInt64());
+            uint? mappedBtn = id switch
+            {
+                HotKeyPrevId => BtnPrevId,
+                HotKeyPlayPauseId => BtnPlayPauseId,
+                HotKeyNextId => BtnNextId,
+                _ => null
+            };
+            if (mappedBtn.HasValue)
+            {
+                handled = true;
+                HandleThumbButtonClick(mappedBtn.Value);
+            }
+            else if (id == HotKeyStopId)
+            {
+                handled = true;
+                HandleStopMediaCommand();
+            }
+
+            return IntPtr.Zero;
+        }
+
+        if (msg == WmAppCommand)
+        {
+            var appCmd = (int)((lParam.ToInt64() >> 16) & 0x0FFF);
+            switch (appCmd)
+            {
+                case AppCmdMediaPlayPause:
+                case AppCmdMediaPlay:
+                case AppCmdMediaPause:
+                    if (ResolveTarget() != ActiveTarget.None)
+                    {
+                        handled = true;
+                        HandleThumbButtonClick(BtnPlayPauseId);
+                    }
+                    break;
+                case AppCmdMediaNext:
+                    if (ResolveTarget() != ActiveTarget.None)
+                    {
+                        handled = true;
+                        HandleThumbButtonClick(BtnNextId);
+                    }
+                    break;
+                case AppCmdMediaPrev:
+                    if (ResolveTarget() != ActiveTarget.None)
+                    {
+                        handled = true;
+                        HandleThumbButtonClick(BtnPrevId);
+                    }
+                    break;
+                case AppCmdMediaStop:
+                    if (ResolveTarget() != ActiveTarget.None)
+                    {
+                        handled = true;
+                        HandleStopMediaCommand();
+                    }
+                    break;
+            }
+
+            return IntPtr.Zero;
+        }
+
         if (msg == WmCommand)
         {
             var rawWParam = wParam.ToInt64();
@@ -236,6 +340,13 @@ public sealed class TaskbarMediaControlService : IDisposable
             _lastActiveTarget = ActiveTarget.Spotify;
         }
 
+        var key = $"{_soloist.IsDaemonRunning}|{status?.Stopped}|{status?.Paused}|{status?.Track?.Uri}";
+        if (string.Equals(key, _lastSoloistPreKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastSoloistPreKey = key;
         Dispatcher.UIThread.Post(UpdateButtonsAndTooltip);
     }
 
@@ -255,6 +366,39 @@ public sealed class TaskbarMediaControlService : IDisposable
             _lastActiveTarget = ActiveTarget.AudioStreamer;
         }
 
+        var key = $"{_audioEngine.IsPlaying}|{_audioEngine.CurrentTrack?.Title}";
+        if (string.Equals(key, _lastAudioPreKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastAudioPreKey = key;
+        Dispatcher.UIThread.Post(UpdateButtonsAndTooltip);
+    }
+
+    private void OnVideoStateChanged(object? sender, Models.VideoPlaybackSnapshot snapshot)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (snapshot.IsPlaying)
+        {
+            _lastActiveTarget = ActiveTarget.VideoPlayer;
+        }
+        else if (_lastActiveTarget == ActiveTarget.None && !string.IsNullOrWhiteSpace(snapshot.CurrentTitle))
+        {
+            _lastActiveTarget = ActiveTarget.VideoPlayer;
+        }
+
+        var key = $"{snapshot.IsPlaying}|{snapshot.IsPaused}|{snapshot.CurrentTitle}";
+        if (string.Equals(key, _lastVideoPreKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastVideoPreKey = key;
         Dispatcher.UIThread.Post(UpdateButtonsAndTooltip);
     }
 
@@ -288,6 +432,8 @@ public sealed class TaskbarMediaControlService : IDisposable
         {
             return;
         }
+
+        SyncGlobalMediaHotKeys();
 
         if (!_buttonsAdded)
         {
@@ -324,14 +470,21 @@ public sealed class TaskbarMediaControlService : IDisposable
         var audioHasTrack = _audioEngine.CurrentTrack is not null;
         var audioPlaying = audioHasTrack && _audioEngine.IsPlaying;
 
-        if (soloistPlaying && !audioPlaying) return ActiveTarget.Spotify;
-        if (audioPlaying && !soloistPlaying) return ActiveTarget.AudioStreamer;
+        var videoHasTrack = _videoEngine is { IsInitialized: true } &&
+                            (_videoEngine.IsPlaying || _videoEngine.IsPaused || !string.IsNullOrWhiteSpace(_videoEngine.CurrentTitle));
+        var videoPlaying = videoHasTrack && _videoEngine!.IsPlaying;
+
+        if (soloistPlaying && !audioPlaying && !videoPlaying) return ActiveTarget.Spotify;
+        if (audioPlaying && !soloistPlaying && !videoPlaying) return ActiveTarget.AudioStreamer;
+        if (videoPlaying && !soloistPlaying && !audioPlaying) return ActiveTarget.VideoPlayer;
 
         if (_lastActiveTarget == ActiveTarget.Spotify && soloistHasTrack) return ActiveTarget.Spotify;
         if (_lastActiveTarget == ActiveTarget.AudioStreamer && audioHasTrack) return ActiveTarget.AudioStreamer;
+        if (_lastActiveTarget == ActiveTarget.VideoPlayer && videoHasTrack) return ActiveTarget.VideoPlayer;
 
         if (soloistHasTrack) return ActiveTarget.Spotify;
         if (audioHasTrack) return ActiveTarget.AudioStreamer;
+        if (videoHasTrack) return ActiveTarget.VideoPlayer;
         return ActiveTarget.None;
     }
 
@@ -363,6 +516,15 @@ public sealed class TaskbarMediaControlService : IDisposable
                 canNext = false;
                 prevTip = "Restart track";
                 playTip = isPlaying ? "Pause Audio" : "Resume Audio";
+                break;
+
+            case ActiveTarget.VideoPlayer:
+                isPlaying = _videoEngine?.IsPlaying == true;
+                canPrev = _videoEngine is { DurationMs: > 0 };
+                canPlayPause = _videoEngine is not null;
+                canNext = false;
+                prevTip = "Restart video";
+                playTip = isPlaying ? "Pause Video" : "Resume Video";
                 break;
 
             default:
@@ -418,6 +580,12 @@ public sealed class TaskbarMediaControlService : IDisposable
             return $"REM · {verb}: {audioTrack.Title}";
         }
 
+        if (target == ActiveTarget.VideoPlayer && _videoEngine is { CurrentTitle: { } vidTitle })
+        {
+            var verb = _videoEngine.IsPlaying ? "Playing" : "Paused";
+            return $"REM · {verb}: {vidTitle}";
+        }
+
         return "REM · RAM Efficient Manager";
     }
 
@@ -455,7 +623,79 @@ public sealed class TaskbarMediaControlService : IDisposable
                         break;
                 }
                 break;
+
+            case ActiveTarget.VideoPlayer when _videoEngine is not null:
+                switch (btnId)
+                {
+                    case BtnPrevId:
+                        if (_videoEngine.DurationMs > 0)
+                        {
+                            _ = _videoEngine.SeekAsync(0);
+                        }
+                        break;
+                    case BtnPlayPauseId:
+                        _ = _videoEngine.TogglePauseAsync();
+                        break;
+                }
+                break;
         }
+    }
+
+    private void HandleStopMediaCommand()
+    {
+        switch (ResolveTarget())
+        {
+            case ActiveTarget.Spotify:
+                _ = _soloist.PauseAsync();
+                break;
+            case ActiveTarget.AudioStreamer:
+                _ = _audioEngine.PauseIfPlayingAsync();
+                break;
+            case ActiveTarget.VideoPlayer when _videoEngine is not null:
+                _ = _videoEngine.PauseAsync();
+                break;
+        }
+    }
+
+    private void SyncGlobalMediaHotKeys()
+    {
+        if (_disposed || !OperatingSystem.IsWindows() || _hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var shouldRegister = ResolveTarget() != ActiveTarget.None;
+        if (shouldRegister == _hotKeysRegistered)
+        {
+            return;
+        }
+
+        if (shouldRegister)
+        {
+            RegisterHotKey(_hwnd, (int)HotKeyPlayPauseId, ModNoRepeat, VkMediaPlayPause);
+            RegisterHotKey(_hwnd, (int)HotKeyNextId, ModNoRepeat, VkMediaNextTrack);
+            RegisterHotKey(_hwnd, (int)HotKeyPrevId, ModNoRepeat, VkMediaPrevTrack);
+            RegisterHotKey(_hwnd, (int)HotKeyStopId, ModNoRepeat, VkMediaStop);
+            _hotKeysRegistered = true;
+        }
+        else
+        {
+            UnregisterHotKeys();
+        }
+    }
+
+    private void UnregisterHotKeys()
+    {
+        if (!_hotKeysRegistered || _hwnd == IntPtr.Zero || !OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try { UnregisterHotKey(_hwnd, (int)HotKeyPlayPauseId); } catch { }
+        try { UnregisterHotKey(_hwnd, (int)HotKeyNextId); } catch { }
+        try { UnregisterHotKey(_hwnd, (int)HotKeyPrevId); } catch { }
+        try { UnregisterHotKey(_hwnd, (int)HotKeyStopId); } catch { }
+        _hotKeysRegistered = false;
     }
 
     private void CreateIcons()
@@ -543,9 +783,14 @@ public sealed class TaskbarMediaControlService : IDisposable
         }
 
         _disposed = true;
+        UnregisterHotKeys();
         _window.Opened -= OnWindowOpened;
         _soloist.StatusChanged -= OnSoloistStatusChanged;
         _audioEngine.PlaybackStateChanged -= OnAudioStateChanged;
+        if (_videoEngine is not null)
+        {
+            _videoEngine.PlaybackStateChanged -= OnVideoStateChanged;
+        }
 
         if (_hookAttached)
         {

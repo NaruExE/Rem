@@ -342,6 +342,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     }
 
     public long ProfileId => _profile.Id;
+    internal string? ActiveModuleId => _activeModuleId;
     public IBrush ProfileAvatarBrush { get; }
     public HeadlessMiniPlayerViewModel MiniPlayer { get; }
 
@@ -1284,8 +1285,8 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             _lastTrimBaselineMb = remActiveMb;
         }
         else if (ActiveModuleView is null &&
-                 remActiveMb >= _lastTrimBaselineMb + 18.0 &&
-                 (DateTimeOffset.UtcNow - _lastAutoTrimUtc) >= TimeSpan.FromMinutes(2))
+                 remActiveMb >= _lastTrimBaselineMb + 14.0 &&
+                 (DateTimeOffset.UtcNow - _lastAutoTrimUtc) >= TimeSpan.FromSeconds(90))
         {
             _lastAutoTrimUtc = DateTimeOffset.UtcNow;
             MemoryTrimService.ScheduleTrim(() => Dispatcher.UIThread.Post(() =>

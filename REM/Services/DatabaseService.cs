@@ -65,6 +65,8 @@ public sealed class DatabaseService
     public const string KeyMovieEmbedTemplate = "MovieEmbedTemplate";
     public const string KeyTvEmbedTemplate = "TvEmbedTemplate";
     public const string KeyMoviesBlockedAdDomains = "MoviesBlockedAdDomains";
+    public const string KeyAutoCheckUpdates = "AutoCheckUpdates";
+    public const string KeySkippedUpdateVersion = "SkippedUpdateVersion";
 
     private static readonly HashSet<string> SecretKeys = new(StringComparer.Ordinal)
     {
@@ -301,6 +303,9 @@ public sealed class DatabaseService
                 case KeyMinimizeToTray:
                     settings.MinimizeToTray = !bool.TryParse(value, out var minTray) || minTray;
                     break;
+                case KeyAutoCheckUpdates:
+                    settings.AutoCheckUpdates = !bool.TryParse(value, out var autoUpdate) || autoUpdate;
+                    break;
                 case KeyWallpaperPath:
                     settings.WallpaperPath = value;
                     break;
@@ -363,31 +368,6 @@ public sealed class DatabaseService
                 list.Add(new TwitchCategoryItem(
                     reader.GetString(0),
                     reader.IsDBNull(1) ? null : reader.GetString(1)));
-            }
-        }
-
-        if (list.Count == 0 && profileId > 0)
-        {
-            var defaults = new[]
-            {
-                new TwitchCategoryItem("League of Legends", "21779"),
-                new TwitchCategoryItem("ASMR", GetCachedTwitchGameId("ASMR"))
-            };
-
-            var order = 0;
-            foreach (var def in defaults)
-            {
-                using var insertCmd = connection.CreateCommand();
-                insertCmd.CommandText = """
-                    INSERT OR IGNORE INTO TwitchCategories (ProfileId, CategoryName, GameId, DisplayOrder)
-                    VALUES ($profileId, $name, $gameId, $order);
-                    """;
-                insertCmd.Parameters.AddWithValue("$profileId", profileId);
-                insertCmd.Parameters.AddWithValue("$name", def.Name);
-                insertCmd.Parameters.AddWithValue("$gameId", (object?)def.GameId ?? DBNull.Value);
-                insertCmd.Parameters.AddWithValue("$order", order++);
-                insertCmd.ExecuteNonQuery();
-                list.Add(def);
             }
         }
 

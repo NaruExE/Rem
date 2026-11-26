@@ -228,8 +228,9 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
                 _currentMedia?.Dispose();
                 _currentMedia = null;
 
+                var suppressVideo = IsHeadlessAudioOnly || _player!.Hwnd == IntPtr.Zero;
                 var resumeStartMs = Math.Max(0, startPositionMs);
-                var media = BuildMediaLocked(resolved, resumeStartMs, IsHeadlessAudioOnly);
+                var media = BuildMediaLocked(resolved, resumeStartMs, suppressVideo);
 
                 _currentMedia = media;
                 _currentResolvedMedia = resolved;
@@ -242,7 +243,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
                 _subtitleDelayMs = 0;
                 _abLoopStartMs = null;
                 _abLoopEndMs = null;
-                _needsVideoSurfaceRebind = IsHeadlessAudioOnly;
+                _needsVideoSurfaceRebind = suppressVideo;
 
                 PositionMs = resumeStartMs;
                 DurationMs = 0;
@@ -1103,6 +1104,13 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
             await Task.Delay(25, cancellationToken).ConfigureAwait(false);
         }
 
+        if (_disposed || player.Hwnd == IntPtr.Zero)
+        {
+            _needsVideoSurfaceRebind = true;
+            IsHeadlessAudioOnly = true;
+            return;
+        }
+
         List<string> savedSubs;
         long savedDelayMs;
         bool wasPlaying;
@@ -1417,7 +1425,11 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
 
         if (_player is null)
         {
-            _player = new MediaPlayer(_libVlc);
+            _player = new MediaPlayer(_libVlc)
+            {
+                EnableKeyInput = false,
+                EnableMouseInput = false
+            };
             _player.Playing += OnPlayerPlaying;
             _player.Paused += OnPlayerPaused;
             _player.Stopped += OnPlayerStopped;
@@ -1682,7 +1694,8 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
 
             var savedSubs = _activeExternalSubUris.ToList();
             var savedDelayMs = _subtitleDelayMs;
-            var useAudioOnlyUrl = IsHeadlessAudioOnly &&
+            var suppressVideo = IsHeadlessAudioOnly || _player.Hwnd == IntPtr.Zero;
+            var useAudioOnlyUrl = suppressVideo &&
                                   _headlessMode == VideoHeadlessMode.AudioOnlyStream &&
                                   (!string.IsNullOrWhiteSpace(cur.AudioSlaveUrl) || !string.IsNullOrWhiteSpace(_cachedAudioOnlyUrl));
             var audioOnlyUrl = cur.AudioSlaveUrl ?? _cachedAudioOnlyUrl;
@@ -1708,10 +1721,11 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
                 }
                 else
                 {
-                    media = BuildMediaLocked(cur, 0, IsHeadlessAudioOnly);
+                    media = BuildMediaLocked(cur, 0, suppressVideo);
                 }
 
                 _currentMedia = media;
+                _needsVideoSurfaceRebind = suppressVideo;
                 PositionMs = 0;
 
                 _player.Volume = _volume;
@@ -1814,8 +1828,32 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
         }
     }
 
-    private void OnPlayerEsChanged(object? sender, MediaPlayerESAddedEventArgs e) =>
+    private void OnPlayerEsChanged(object? sender, MediaPlayerESAddedEventArgs e)
+    {
+        if (e.Type == TrackType.Video && (IsHeadlessAudioOnly || _player?.Hwnd == IntPtr.Zero))
+        {
+            _needsVideoSurfaceRebind = true;
+            var player = _player;
+            if (player is not null)
+            {
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        if (IsHeadlessAudioOnly || player.Hwnd == IntPtr.Zero)
+                        {
+                            player.SetVideoTrack(-1);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                });
+            }
+        }
+
         TracksChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     private void OnPlayerEsChanged(object? sender, MediaPlayerESDeletedEventArgs e) =>
         TracksChanged?.Invoke(this, EventArgs.Empty);

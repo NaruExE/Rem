@@ -48,6 +48,10 @@ cd Rem
 dotnet run --project REM/REM.csproj -c Release
 ```
 
+### Updating REM
+- **Already on `v1.0.1` or newer:** Open **Settings -> General -> App Updates (GitHub)** (or click the update badge in the top bar when a new release drops). REM checks SHA-256 checksums against `update-manifest.json`, downloads **only the changed files** via HTTP Range requests (or falls back to the ZIP automatically), backs up your old files, swaps them safely, and leaves `%LocalAppData%\REM\` (your profiles, tokens, themes, playlists, and tools) untouched.
+- **Already on `v1.0.0`?** Grab [`Update-REM.cmd`](https://github.com/NaruExE/Rem/releases/latest/download/Update-REM.cmd) from the Latest Release, drop it into your REM folder next to `REM.exe` (or run it from anywhere and point it at your folder), and double-click it — same delta download + SHA-256 verification + automatic rollback safety, zero lost data.
+
 ---
 
 ## Setup Cheat Sheet (so you don't have to ask me)

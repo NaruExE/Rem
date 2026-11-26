@@ -97,6 +97,7 @@ public sealed class VideoPlayerModule : IAppModule, IHeaderConfigurableModule, I
             return;
         }
 
+        await WaitForActiveViewModelAsync(cancellationToken).ConfigureAwait(false);
         if (_activeViewModel is { } vm)
         {
             await vm.PlayDirectFileAsync(filePath, cancellationToken).ConfigureAwait(false);
@@ -104,6 +105,51 @@ public sealed class VideoPlayerModule : IAppModule, IHeaderConfigurableModule, I
         else
         {
             await _engine.PlaySourceAsync(filePath, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task PlaySourceInUiAsync(
+        string input,
+        string? titleOverride = null,
+        long startPositionMs = 0,
+        bool startPaused = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(input))
+        {
+            return;
+        }
+
+        await WaitForActiveViewModelAsync(cancellationToken).ConfigureAwait(false);
+        if (_activeViewModel is { } vm)
+        {
+            await vm.PlayDirectSourceAsync(input, titleOverride, startPositionMs, startPaused, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            await _engine.PlaySourceAsync(
+                input,
+                titleOverride: titleOverride,
+                startPositionMs: startPositionMs,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (startPaused)
+            {
+                await _engine.PauseAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task WaitForActiveViewModelAsync(CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < 30 && !_disposed && !cancellationToken.IsCancellationRequested; i++)
+        {
+            if (_activeViewModel is not null)
+            {
+                return;
+            }
+
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
     }
 

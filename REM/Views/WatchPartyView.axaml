@@ -175,6 +175,11 @@
           <!-- Synced VLC Media Card -->
           <Border Classes="rem-card" Padding="16">
             <StackPanel Spacing="12">
+              <TextBlock Text="1. Host starts room &amp; copies link -&gt; Guests paste link &amp; Join.  2. Paste a YouTube/stream URL (auto-opens VLC synced for everyone) or click Local File (everyone picks their own copy)."
+                         Classes="muted"
+                         FontSize="11"
+                         TextWrapping="Wrap" />
+
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Spacing="2">
                   <TextBlock Text="Synced VLC Playback" FontSize="14" FontWeight="SemiBold" />
@@ -278,7 +283,7 @@
             Padding="18,8">
       <Grid ColumnDefinitions="*,Auto">
         <TextBlock Grid.Column="0" Text="{Binding ConnectionStatusText}" Classes="muted" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-        <TextBlock Grid.Column="1" Text="1.5s smart drift tolerance · Auto-kills cloudflared.exe on Kill" Classes="muted" FontSize="11" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="0.9s smart drift tolerance · Auto-kills cloudflared.exe on Kill" Classes="muted" FontSize="11" VerticalAlignment="Center" />
       </Grid>
     </Border>
   </Grid>

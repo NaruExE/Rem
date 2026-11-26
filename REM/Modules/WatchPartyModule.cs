@@ -32,6 +32,7 @@ public sealed class WatchPartyModule : IAppModule, IHeaderConfigurableModule, IC
         _videoPlayerModule = videoPlayerModule;
         _actionLog = actionLog;
         _service = new WatchPartyService(videoPlayerModule, actionLog);
+        _service.RequestOpenVlcUi = RequestOpenVlcUi;
 
         _service.StateChanged += OnServiceUpdated;
         _service.PeersChanged += OnPeersUpdated;

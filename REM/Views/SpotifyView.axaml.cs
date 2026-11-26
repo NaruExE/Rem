@@ -51,7 +51,12 @@ public partial class SpotifyView : UserControl
 
     private void OnViewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && _boundVm is { IsLyricsFullscreen: true })
+        if (_boundVm is null)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape && _boundVm.IsLyricsFullscreen)
         {
             _boundVm.CloseLyricsFullscreenCommand.Execute(null);
             e.Handled = true;

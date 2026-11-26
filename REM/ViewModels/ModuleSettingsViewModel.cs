@@ -85,7 +85,7 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
 
     private static readonly AudioQualityOption[] AllAudioQualityOptions =
     [
-        new("max", "Highest Available (Default · ASMR/Music)"),
+        new("max", "Highest Available (Default · Best Audio)"),
         new("160", "High (Up to 160 kbps)"),
         new("128", "Balanced (Up to 128 kbps)"),
         new("64", "Data Saver (Up to 64 kbps)")

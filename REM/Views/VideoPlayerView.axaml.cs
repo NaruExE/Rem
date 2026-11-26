@@ -365,6 +365,7 @@ public partial class VideoPlayerView : UserControl
                 _lastActivityUtc = DateTime.UtcNow;
                 _boundVm.ShowControls();
                 _boundVm.TogglePlayPauseCommand.Execute(null);
+                (_hookedWindow as MainWindow)?.MarkSpaceHandled();
                 e.Handled = true;
                 break;
             case Key.Left:

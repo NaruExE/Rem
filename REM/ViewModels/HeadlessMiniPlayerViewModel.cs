@@ -21,10 +21,13 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
     private readonly VideoPlayerService _videoPlayer;
     private readonly Action<string> _onOpenModuleUi;
 
+    private static readonly string[] TrackedPlayerIds = ["spotify", "audio-streamer", "video-player"];
+
     private readonly List<string> _headlessPlayerIds = new(3);
     private int _selectedIndex;
     private string? _activeOpenModuleId;
     private string? _lastCheckedLikedTrackUri;
+    private string _lastStateFingerprint = string.Empty;
     private bool _disposed;
 
     public HeadlessMiniPlayerViewModel(
@@ -253,10 +256,46 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
 
     private void PostRefresh()
     {
-        if (!_disposed)
+        if (_disposed)
         {
-            Dispatcher.UIThread.Post(Refresh);
+            return;
         }
+
+        var fp = BuildStateFingerprint();
+        if (string.Equals(fp, _lastStateFingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastStateFingerprint = fp;
+        Dispatcher.UIThread.Post(Refresh);
+    }
+
+    private string BuildStateFingerprint()
+    {
+        var anyHeadless = false;
+        var sp = _moduleManager.GetModule("spotify")?.State;
+        var au = _moduleManager.GetModule("audio-streamer")?.State;
+        var vp = _moduleManager.GetModule("video-player")?.State;
+        if (sp == ModuleState.RunningHeadless || au == ModuleState.RunningHeadless || vp == ModuleState.RunningHeadless)
+        {
+            anyHeadless = true;
+        }
+
+        if (!anyHeadless)
+        {
+            return $"none|{_activeOpenModuleId}";
+        }
+
+        var st = _soloist.CurrentStatus;
+        var auTr = _audioEngine.CurrentTrack;
+        return string.Concat(
+            _activeOpenModuleId ?? string.Empty, "|",
+            ((int)(sp ?? 0)).ToString(), "|", ((int)(au ?? 0)).ToString(), "|", ((int)(vp ?? 0)).ToString(), "|",
+            st?.Track?.Uri ?? string.Empty, "|", st?.Paused == true ? "P" : "R", "|", st?.Stopped == true ? "S" : "A", "|",
+            st?.RepeatContext == true ? "RC" : string.Empty, st?.RepeatTrack == true ? "RT" : string.Empty, "|",
+            auTr?.Title ?? string.Empty, "|", _audioEngine.IsPlaying ? "1" : "0", "|", _audioEngine.IsLooping ? "L" : string.Empty, "|",
+            _videoPlayer.CurrentTitle ?? string.Empty, "|", _videoPlayer.IsPlaying ? "1" : "0", "|", ((int)_videoPlayer.LoopMode).ToString());
     }
 
     private void Refresh()
@@ -269,7 +308,7 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
         var previousId = GetCurrentModuleId();
         _headlessPlayerIds.Clear();
 
-        foreach (var id in new[] { "spotify", "audio-streamer", "video-player" })
+        foreach (var id in TrackedPlayerIds)
         {
             if (string.Equals(_activeOpenModuleId, id, StringComparison.Ordinal))
             {

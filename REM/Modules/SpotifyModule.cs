@@ -62,6 +62,7 @@ public sealed class SpotifyModule : IAppModule, IHeaderConfigurableModule, IClos
 
     public ModuleState State => _state;
     public bool HasActiveView => _activeView is not null;
+    internal SpotifyViewModel? ActiveViewModel => _activeViewModel;
     public string StatusSummary { get; private set; }
 
     public Action<string>? OpenModuleSettingsRequested { get; set; }

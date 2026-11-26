@@ -77,6 +77,7 @@ public sealed class WatchPartyService : IDisposable
     public bool HostOnlyControls { get; set; }
     public string RoomUrl => _roomUrl;
     public string StatusText => _statusText;
+    public Action? RequestOpenVlcUi { get; set; }
 
     public event EventHandler? StateChanged;
     public event EventHandler<IReadOnlyList<string>>? PeersChanged;
@@ -273,13 +274,18 @@ public sealed class WatchPartyService : IDisposable
         }
 
         var trimmed = urlOrInput.Trim();
-        SuppressOutboundFor(2000);
-        var resolved = await _videoPlayerModule.Engine.PlaySourceAsync(trimmed, cancellationToken: cancellationToken)
+        SuppressOutboundFor(3500);
+        RequestOpenVlcUi?.Invoke();
+        await _videoPlayerModule.PlaySourceInUiAsync(trimmed, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        _lastSourceUrl = resolved.OriginalInput;
-        _lastPlayingState = true;
-        _lastPosMs = 0;
+        var engine = _videoPlayerModule.Engine;
+        var resolvedUrl = engine.CurrentSourceUrl ?? trimmed;
+        var resolvedTitle = engine.CurrentTitle ?? trimmed;
+
+        _lastSourceUrl = resolvedUrl;
+        _lastPlayingState = engine.IsPlaying;
+        _lastPosMs = engine.PositionMs;
         _lastPosTimestamp = DateTimeOffset.UtcNow;
 
         if (_isConnected)
@@ -287,15 +293,15 @@ public sealed class WatchPartyService : IDisposable
             var packet = new WatchPartyPacket(
                 Type: "load_url",
                 Sender: _nickname,
-                PositionMs: 0,
-                IsPaused: false,
-                Speed: _videoPlayerModule.Engine.PlaybackSpeed,
-                MediaUrl: resolved.OriginalInput,
-                MediaTitle: resolved.Title,
+                PositionMs: engine.PositionMs,
+                IsPaused: !engine.IsPlaying,
+                Speed: engine.PlaybackSpeed,
+                MediaUrl: resolvedUrl,
+                MediaTitle: resolvedTitle,
                 SentUnixMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
             await DispatchOutboundAsync(packet, cancellationToken).ConfigureAwait(false);
-            AddSystemChat($"Synced stream URL: {resolved.Title}");
+            AddSystemChat($"Synced stream URL: {resolvedTitle}");
         }
     }
 
@@ -306,7 +312,8 @@ public sealed class WatchPartyService : IDisposable
             return;
         }
 
-        SuppressOutboundFor(2000);
+        SuppressOutboundFor(2500);
+        RequestOpenVlcUi?.Invoke();
         await _videoPlayerModule.PlayFileInUiAsync(filePath, cancellationToken).ConfigureAwait(false);
 
         var fileName = Path.GetFileName(filePath);
@@ -733,6 +740,20 @@ public sealed class WatchPartyService : IDisposable
             return;
         }
 
+        if (string.Equals(packet.Type, "sync_request", StringComparison.Ordinal))
+        {
+            var engine = _videoPlayerModule.Engine;
+            await SendToPeerAsync(sender, new WatchPartyPacket(
+                Type: "sync",
+                Sender: _nickname,
+                Action: engine.IsPlaying ? "play" : "pause",
+                PositionMs: engine.PositionMs,
+                IsPaused: !engine.IsPlaying,
+                Speed: engine.PlaybackSpeed,
+                SentUnixMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), ct).ConfigureAwait(false);
+            return;
+        }
+
         if (HostOnlyControls)
         {
             await SendToPeerAsync(
@@ -868,20 +889,29 @@ public sealed class WatchPartyService : IDisposable
             !string.IsNullOrWhiteSpace(packet.MediaUrl) &&
             IsHttpUrl(packet.MediaUrl))
         {
-            SuppressOutboundFor(2200);
+            SuppressOutboundFor(3500);
             _lastSourceUrl = packet.MediaUrl;
-            await engine.PlaySourceAsync(
+            RequestOpenVlcUi?.Invoke();
+            await _videoPlayerModule.PlaySourceInUiAsync(
                 packet.MediaUrl,
                 titleOverride: packet.MediaTitle,
-                startPositionMs: targetPosMs).ConfigureAwait(false);
-            if (packet.IsPaused)
-            {
-                await engine.PauseAsync().ConfigureAwait(false);
-            }
+                startPositionMs: targetPosMs,
+                startPaused: packet.IsPaused).ConfigureAwait(false);
 
             if (Math.Abs(engine.PlaybackSpeed - packet.Speed) > 0.05f && packet.Speed >= 0.25f)
             {
                 await engine.SetPlaybackSpeedAsync(packet.Speed).ConfigureAwait(false);
+            }
+
+            // Resync against Host's live clock right after yt-dlp / stream resolution finishes.
+            if (_role == WatchPartyRole.Client)
+            {
+                SuppressOutboundFor(1500);
+                await SendClientPacketAsync(new WatchPartyPacket(
+                    Type: "sync_request",
+                    Sender: _nickname,
+                    SentUnixMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), CancellationToken.None)
+                    .ConfigureAwait(false);
             }
 
             AddSystemChat($"{packet.Sender ?? "Peer"} synced media: {packet.MediaTitle ?? packet.MediaUrl}");

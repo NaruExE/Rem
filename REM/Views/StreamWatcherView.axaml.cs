@@ -425,6 +425,7 @@ public partial class StreamWatcherView : UserControl
                 _lastActivityUtc = DateTime.UtcNow;
                 _boundVm.ShowControls();
                 _boundVm.TogglePlayPauseCommand.Execute(null);
+                (_hookedWindow as MainWindow)?.MarkSpaceHandled();
                 e.Handled = true;
                 break;
             case Key.Left when _boundVm.CanSeek:

@@ -80,8 +80,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly ActionLogService _actionLog;
     private readonly DialogService _dialogService;
     private readonly StartupService _startupService;
+    private readonly UpdateService _updateService;
     private readonly Func<Task<string?>> _pickAudioFileAsync;
     private readonly Func<Task<string?>> _pickImageFileAsync;
+    private readonly Func<UpdateCheckResult, Task<bool>> _installUpdateAsync;
     private readonly Action<long?, bool> _onProfilesChanged;
     private readonly Action<bool> _onHeaderBarPreferenceChanged;
     private readonly Action _onReloadAssets;
@@ -89,6 +91,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly Action _onClose;
 
     private CancellationTokenSource? _previewCts;
+    private CancellationTokenSource? _updateCheckCts;
+    private UpdateCheckResult? _latestUpdateResult;
     private UserProfile? _editingProfile;
     private bool _suppressSave;
     private bool _disposed;
@@ -101,8 +105,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ActionLogService actionLog,
         DialogService dialogService,
         StartupService startupService,
+        UpdateService updateService,
         Func<Task<string?>> pickAudioFileAsync,
         Func<Task<string?>> pickImageFileAsync,
+        Func<UpdateCheckResult, Task<bool>> installUpdateAsync,
         Action<long?, bool> onProfilesChanged,
         Action<bool> onHeaderBarPreferenceChanged,
         Action onReloadAssets,
@@ -116,8 +122,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _actionLog = actionLog;
         _dialogService = dialogService;
         _startupService = startupService;
+        _updateService = updateService;
         _pickAudioFileAsync = pickAudioFileAsync;
         _pickImageFileAsync = pickImageFileAsync;
+        _installUpdateAsync = installUpdateAsync;
         _onProfilesChanged = onProfilesChanged;
         _onHeaderBarPreferenceChanged = onHeaderBarPreferenceChanged;
         _onReloadAssets = onReloadAssets;
@@ -129,6 +137,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         SkipIntro = settings.SkipIntro;
         ShowAppHeaderBar = settings.ShowAppHeaderBar;
         MinimizeToTray = settings.MinimizeToTray;
+        AutoCheckUpdates = settings.AutoCheckUpdates;
         StartWithWindows = _startupService.IsEnabled();
         WelcomeAudioPath = settings.WelcomeAudioPath;
         WallpaperPath = settings.WallpaperPath;
@@ -141,6 +150,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ModuleOpacityPercent = Math.Round(settings.ModuleOpacity * 100.0);
         ReloadThemesCore(settings.ThemeName);
         _suppressSave = false;
+
+        CurrentVersionLabel = _updateService.CurrentVersionDisplay;
+        ApplyUpdateResultToUi(_updateService.LastCheckResult);
 
         RefreshAudioDisplay();
         ReloadProfilesList();
@@ -190,6 +202,38 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _startWithWindows;
+
+    [ObservableProperty]
+    private bool _autoCheckUpdates = true;
+
+    [ObservableProperty]
+    private string _currentVersionLabel = string.Empty;
+
+    [ObservableProperty]
+    private string _updateStatusText = "Ready to check GitHub releases.";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCheckUpdates))]
+    [NotifyPropertyChangedFor(nameof(CanStartInstall))]
+    private bool _isCheckingUpdates;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCheckUpdates))]
+    [NotifyPropertyChangedFor(nameof(CanStartInstall))]
+    private bool _isUpdateDownloading;
+
+    [ObservableProperty]
+    private double _updateProgressPercent;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStartInstall))]
+    private bool _canInstallUpdate;
+
+    [ObservableProperty]
+    private bool _hasReleaseUrl;
+
+    public bool CanCheckUpdates => !IsCheckingUpdates && !IsUpdateDownloading;
+    public bool CanStartInstall => CanInstallUpdate && !IsCheckingUpdates && !IsUpdateDownloading;
 
     [ObservableProperty]
     private ThemeDescriptor? _selectedTheme;
@@ -309,6 +353,157 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             "Startup Setting Failed",
             "Could not update the Windows startup registry entry.",
             errorMessage);
+    }
+
+    partial void OnAutoCheckUpdatesChanged(bool value)
+    {
+        if (_suppressSave)
+        {
+            return;
+        }
+
+        _database.SaveSetting(DatabaseService.KeyAutoCheckUpdates, value.ToString());
+        _actionLog.Log("Settings", $"AutoCheckUpdates set to {value}.");
+    }
+
+    public void ReportDownloadProgress(UpdateProgress progress)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        IsUpdateDownloading = true;
+        UpdateProgressPercent = progress.Percent;
+        UpdateStatusText = progress.TotalBytes > 0
+            ? $"{progress.Phase} {progress.Percent:F0}% ({UpdateService.FormatBytes(progress.BytesDownloaded)} / {UpdateService.FormatBytes(progress.TotalBytes)})"
+            : progress.Phase;
+    }
+
+    private void ApplyUpdateResultToUi(UpdateCheckResult? result)
+    {
+        _latestUpdateResult = result;
+        if (result is null)
+        {
+            CanInstallUpdate = false;
+            HasReleaseUrl = false;
+            UpdateStatusText = "Ready to check GitHub releases.";
+            return;
+        }
+
+        HasReleaseUrl = !string.IsNullOrWhiteSpace(result.ReleaseUrl);
+
+        switch (result.Status)
+        {
+            case UpdateCheckStatus.UpToDate:
+                CanInstallUpdate = false;
+                UpdateStatusText = result.LatestVersion is not null
+                    ? $"Up to date ({result.CurrentVersion}; latest on GitHub is {result.LatestVersion})."
+                    : $"Up to date ({result.CurrentVersion}).";
+                break;
+
+            case UpdateCheckStatus.UpdateAvailable:
+                CanInstallUpdate = true;
+                UpdateStatusText = result.HasManifestDelta
+                    ? $"Update {result.LatestVersion} available: {result.FilesToDownload.Count} changed file(s) (~{UpdateService.FormatBytes(result.DeltaCompressedBytes)} instead of {UpdateService.FormatBytes(result.ZipTotalBytes)})."
+                    : $"Update {result.LatestVersion} available on GitHub ({UpdateService.FormatBytes(result.ZipTotalBytes)}).";
+                break;
+
+            case UpdateCheckStatus.Error:
+                CanInstallUpdate = false;
+                UpdateStatusText = result.ErrorMessage ?? "Update check failed.";
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (IsCheckingUpdates || IsUpdateDownloading || _disposed)
+        {
+            return;
+        }
+
+        _updateCheckCts?.Cancel();
+        _updateCheckCts?.Dispose();
+        _updateCheckCts = new CancellationTokenSource();
+
+        IsCheckingUpdates = true;
+        UpdateStatusText = "Checking GitHub releases...";
+
+        try
+        {
+            var result = await _updateService.CheckForUpdatesAsync(_updateCheckCts.Token);
+            if (!_disposed)
+            {
+                ApplyUpdateResultToUi(result);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsCheckingUpdates = false;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task InstallUpdateAsync()
+    {
+        if (IsCheckingUpdates || IsUpdateDownloading || _disposed)
+        {
+            return;
+        }
+
+        var target = _latestUpdateResult ?? _updateService.LastCheckResult;
+        if (target is null || target.Status != UpdateCheckStatus.UpdateAvailable)
+        {
+            return;
+        }
+
+        IsUpdateDownloading = true;
+        UpdateProgressPercent = 0;
+        UpdateStatusText = "Preparing delta download...";
+
+        try
+        {
+            var startedSwap = await _installUpdateAsync(target);
+            if (!_disposed && !startedSwap)
+            {
+                IsUpdateDownloading = false;
+                ApplyUpdateResultToUi(target);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed)
+            {
+                IsUpdateDownloading = false;
+                UpdateStatusText = $"Update failed: {ex.Message}";
+            }
+        }
+    }
+
+    [RelayCommand]
+    private void OpenReleasePage()
+    {
+        var url = _latestUpdateResult?.ReleaseUrl ?? _updateService.LastCheckResult?.ReleaseUrl;
+        if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+        }
     }
 
     partial void OnSelectedThemeChanged(ThemeDescriptor? value)
@@ -769,6 +964,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        _updateCheckCts?.Cancel();
+        _updateCheckCts?.Dispose();
+        _updateCheckCts = null;
         StopPreview();
         ClearEditingState();
         DisposeProfilesList();

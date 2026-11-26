@@ -216,6 +216,78 @@
                 </StackPanel>
               </Border>
 
+              <!-- App Updates (GitHub) -->
+              <Border Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="{DynamicResource ControlCornerRadius}"
+                      Padding="14,12">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      <PathIcon Data="{x:Static svc:IconCatalog.Download}" Width="14" Height="14" />
+                      <TextBlock Text="App Updates (GitHub)"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center" />
+                      <Border Background="{DynamicResource CardBrush}"
+                              BorderBrush="{DynamicResource BorderSoftBrush}"
+                              BorderThickness="1"
+                              CornerRadius="6"
+                              Padding="7,2"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CurrentVersionLabel}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Classes="muted" />
+                      </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      <TextBlock Text="Auto-check"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 VerticalAlignment="Center" />
+                      <ToggleSwitch IsChecked="{Binding AutoCheckUpdates}"
+                                    OnContent="On"
+                                    OffContent="Off"
+                                    VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Grid>
+
+                  <TextBlock Text="{Binding UpdateStatusText}"
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+
+                  <ProgressBar IsVisible="{Binding IsUpdateDownloading}"
+                               Minimum="0"
+                               Maximum="100"
+                               Value="{Binding UpdateProgressPercent}"
+                               Height="6"
+                               Foreground="{DynamicResource PrimaryAccentBrush}"
+                               Background="{DynamicResource CardBrush}" />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="rem-soft"
+                            Command="{Binding CheckForUpdatesCommand}"
+                            IsEnabled="{Binding CanCheckUpdates}"
+                            Content="Check for Updates" />
+                    <Button Classes="rem-primary"
+                            Command="{Binding InstallUpdateCommand}"
+                            IsVisible="{Binding CanInstallUpdate}"
+                            IsEnabled="{Binding CanStartInstall}"
+                            Content="Download &amp; Install"
+                            Padding="12,7"
+                            FontSize="12" />
+                    <Button Classes="rem-soft"
+                            Command="{Binding OpenReleasePageCommand}"
+                            IsVisible="{Binding HasReleaseUrl}"
+                            Content="Release Notes" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
               <!-- Zero-RAM Disk Action Log -->
               <Border Background="{DynamicResource SurfaceAltBrush}"
                       BorderBrush="{DynamicResource BorderSoftBrush}"

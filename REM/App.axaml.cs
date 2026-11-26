@@ -29,6 +29,7 @@ public sealed class App : Application
     private ActionLogService? _actionLog;
     private DialogService? _dialogService;
     private StartupService? _startupService;
+    private UpdateService? _updateService;
     private TrayService? _trayService;
     private TaskbarMediaControlService? _taskbarMedia;
     private MainWindowViewModel? _mainViewModel;
@@ -54,6 +55,7 @@ public sealed class App : Application
             _imageAssets = new ImageAssetService();
             _dialogService = new DialogService(_imageAssets, _actionLog);
             _startupService = new StartupService();
+            _updateService = new UpdateService(_database, _actionLog);
             _ytDlpService = new YtDlpService();
             _youtubeService = new YouTubeAudioService(_ytDlpService, _actionLog);
             _twitchService = new TwitchHelixService(_database, _actionLog);
@@ -102,6 +104,7 @@ public sealed class App : Application
                 _actionLog,
                 _dialogService,
                 _startupService,
+                _updateService,
                 _ytDlpService,
                 _twitchService,
                 _soloistService,
@@ -117,7 +120,8 @@ public sealed class App : Application
                 mainWindow,
                 _soloistService,
                 _moduleManager.AudioEngine,
-                _actionLog);
+                _actionLog,
+                _moduleManager.VideoPlayerModule.Engine);
 
             var icon = _imageAssets.TryLoadWindowIcon();
             if (icon is not null)
@@ -140,17 +144,21 @@ public sealed class App : Application
                 mainWindow.Activate();
             }
 
+            void ShutdownForUpdateOrExit()
+            {
+                mainWindow.AllowRealClose = true;
+                mainWindow.Close();
+                desktop.Shutdown();
+            }
+
+            _mainViewModel.RequestAppShutdown = ShutdownForUpdateOrExit;
+
             _trayService = new TrayService(
                 _moduleManager,
                 _imageAssets,
                 RestoreWindow,
                 moduleId => _mainViewModel.OpenModuleFromTray(moduleId),
-                () =>
-                {
-                    mainWindow.AllowRealClose = true;
-                    mainWindow.Close();
-                    desktop.Shutdown();
-                });
+                ShutdownForUpdateOrExit);
 
             _mainViewModel.RefreshShellIcons = () =>
             {
@@ -170,6 +178,7 @@ public sealed class App : Application
                 _taskbarMedia?.Dispose();
                 _trayService?.Dispose();
                 _mainViewModel?.Shutdown();
+                _updateService?.Dispose();
                 _tmdbService?.Dispose();
                 _videoPlayerService?.Dispose();
                 _soloistService?.Dispose();

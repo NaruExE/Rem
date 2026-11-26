@@ -44,6 +44,8 @@ public sealed class SpotifySoloistService : IDisposable
     private readonly ActionLogService _actionLog;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _sendGate = new(1, 1);
+    private AudioDeviceChangeWatcher? _deviceWatcher;
+    private int _deviceRestartInFlight;
 
     private Process? _process;
     private ClientWebSocket? _ws;
@@ -158,6 +160,7 @@ public sealed class SpotifySoloistService : IDisposable
             await EnsureDaemonRunningAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        StartDeviceWatcher();
         return (true, null);
     }
 
@@ -469,6 +472,7 @@ public sealed class SpotifySoloistService : IDisposable
                 : $"soloist.exe exited (code {exitCode}): {_lastStderrLine}");
         }
 
+        StartDeviceWatcher();
         return (true, null);
     }
 
@@ -481,6 +485,7 @@ public sealed class SpotifySoloistService : IDisposable
 
     public void StopDaemon()
     {
+        StopDeviceWatcher();
         CancelAndDisposeWsCts();
         _isConnected = false;
         _isAuthenticated = false;
@@ -525,19 +530,112 @@ public sealed class SpotifySoloistService : IDisposable
         StatusChanged?.Invoke(this, null);
     }
 
+    private void StartDeviceWatcher()
+    {
+        if (_disposed || _deviceWatcher is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var watcher = new AudioDeviceChangeWatcher();
+            watcher.DefaultRenderDeviceChanged += OnDefaultRenderDeviceChanged;
+            _deviceWatcher = watcher;
+        }
+        catch
+        {
+        }
+    }
+
+    private void StopDeviceWatcher()
+    {
+        var watcher = Interlocked.Exchange(ref _deviceWatcher, null);
+        if (watcher is not null)
+        {
+            watcher.DefaultRenderDeviceChanged -= OnDefaultRenderDeviceChanged;
+            watcher.Dispose();
+        }
+    }
+
+    private void OnDefaultRenderDeviceChanged(object? sender, string deviceId)
+    {
+        if (_disposed || !IsDaemonRunning || Interlocked.CompareExchange(ref _deviceRestartInFlight, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var st = _lastStatus;
+                var wasPlaying = st is { Stopped: false, Paused: false, Track: not null };
+                var trackUri = st?.Track?.Uri;
+                var posMs = GetEstimatedPositionMs();
+
+                _actionLog.Log("Spotify", "Windows default audio output changed; restarting Soloist on new device...");
+                var (restarted, _) = await RestartDaemonAsync(CancellationToken.None).ConfigureAwait(false);
+                if (!restarted || !wasPlaying || string.IsNullOrWhiteSpace(trackUri))
+                {
+                    return;
+                }
+
+                // Wait for WebSocket + Spotify Connect auth before resuming track.
+                for (var i = 0; i < 45 && !_disposed; i++)
+                {
+                    if (_isConnected && _isAuthenticated)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(100).ConfigureAwait(false);
+                }
+
+                if (_isConnected && !_disposed)
+                {
+                    if (await PlayAsync(trackUri, CancellationToken.None).ConfigureAwait(false) && posMs > 1500)
+                    {
+                        await Task.Delay(350).ConfigureAwait(false);
+                        await SeekAsync(posMs, CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _deviceRestartInFlight, 0);
+            }
+        });
+    }
+
     public async Task<bool> PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
     {
         if (!_isDeviceActive)
         {
             await SendCommandAsync(new { type = "command", command = "activate" }, cancellationToken).ConfigureAwait(false);
+            for (var i = 0; i < 15 && !_isDeviceActive && !cancellationToken.IsCancellationRequested; i++)
+            {
+                await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        if (string.IsNullOrWhiteSpace(uri))
+        var ok = string.IsNullOrWhiteSpace(uri)
+            ? await SendCommandAsync(new { type = "command", command = "play" }, cancellationToken).ConfigureAwait(false)
+            : await SendCommandAsync(new { type = "command", command = "play", uri }, cancellationToken).ConfigureAwait(false);
+
+        if (!ok)
         {
-            return await SendCommandAsync(new { type = "command", command = "play" }, cancellationToken).ConfigureAwait(false);
+            await SendCommandAsync(new { type = "command", command = "activate" }, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+            ok = string.IsNullOrWhiteSpace(uri)
+                ? await SendCommandAsync(new { type = "command", command = "play" }, cancellationToken).ConfigureAwait(false)
+                : await SendCommandAsync(new { type = "command", command = "play", uri }, cancellationToken).ConfigureAwait(false);
         }
 
-        return await SendCommandAsync(new { type = "command", command = "play", uri }, cancellationToken).ConfigureAwait(false);
+        return ok;
     }
 
     public Task<bool> PauseAsync(CancellationToken cancellationToken = default) =>
@@ -1108,7 +1206,7 @@ public sealed class SpotifySoloistService : IDisposable
         _ = RequestQueueAsync(25);
     }
 
-    private long GetEstimatedPositionMs()
+    public long GetEstimatedPositionMs()
     {
         if (!_isClockRunning)
         {

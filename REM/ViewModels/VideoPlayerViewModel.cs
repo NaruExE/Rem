@@ -744,6 +744,34 @@ public sealed partial class VideoPlayerViewModel : ObservableObject, IDisposable
         ShowTransientBanner($"Playing: {Path.GetFileName(filePath)}");
     }
 
+    public async Task PlayDirectSourceAsync(
+        string input,
+        string? titleOverride = null,
+        long startPositionMs = 0,
+        bool startPaused = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(input))
+        {
+            return;
+        }
+
+        MediaInputText = input;
+        RefererInputText = string.Empty;
+        await WaitForSurfaceAttachedAsync();
+        var resolved = await _engine.PlaySourceAsync(
+            input,
+            titleOverride: titleOverride,
+            startPositionMs: startPositionMs,
+            cancellationToken: cancellationToken);
+        if (startPaused)
+        {
+            await _engine.PauseAsync(CancellationToken.None);
+        }
+
+        ShowTransientBanner($"{(startPaused ? "Paused" : "Playing")}: {resolved.Title}");
+    }
+
     [RelayCommand]
     private async Task AddFolderAsPlaylistAsync()
     {

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using REM.Services;
 using REM.ViewModels;
 
@@ -18,13 +19,20 @@ public partial class MainWindow : Window
 
         AddHandler(InputElement.PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(InputElement.KeyUpEvent, OnWindowKeyUp, RoutingStrategies.Tunnel);
         PropertyChanged += OnWindowPropertyChanged;
     }
 
     private WindowState _preFullscreenState = WindowState.Normal;
     private bool _isVideoFullscreen;
+    private bool _swallowNextSpaceKeyUp;
 
     public bool AllowRealClose { get; set; }
+
+    /// <summary>
+    /// Marks the upcoming Space KeyUp to be swallowed so a focused Button never re-clicks when a player consumes Space.
+    /// </summary>
+    public void MarkSpaceHandled() => _swallowNextSpaceKeyUp = true;
 
     public void SetVideoFullscreen(bool isFullscreen)
     {
@@ -179,34 +187,98 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Escape || DataContext is not MainWindowViewModel vm)
+        if (e.Key == Key.Space)
+        {
+            _swallowNextSpaceKeyUp = false;
+        }
+
+        if (DataContext is not MainWindowViewModel vm)
         {
             return;
         }
 
-        if (vm.DialogService.TryDismissActive())
+        if (e.Key is Key.MediaPlayPause or Key.MediaNextTrack or Key.MediaPreviousTrack or Key.MediaStop)
         {
-            e.Handled = true;
+            if (vm.HandleMediaKey(e.Key))
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 
-        if (vm.IsSettingsOpen)
+        if (e.Key == Key.Escape)
         {
-            vm.CloseSettings();
-            e.Handled = true;
+            if (vm.DialogService.TryDismissActive())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (vm.IsSettingsOpen)
+            {
+                vm.CloseSettings();
+                e.Handled = true;
+                return;
+            }
+
+            if (vm.CurrentScreen is ProfilesViewModel pvm && pvm.TryCloseModal())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (vm.CurrentScreen is DashboardViewModel dvm && dvm.TryCloseModal())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (vm.TryExitActiveModuleSubOverlay())
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 
-        if (vm.CurrentScreen is ProfilesViewModel pvm && pvm.TryCloseModal())
+        if (IsTextInputFocused(e.Source) ||
+            vm.DialogService.IsDialogOpen ||
+            vm.IsSettingsOpen ||
+            vm.CurrentScreen is not DashboardViewModel { HasOpenModal: false })
         {
-            e.Handled = true;
             return;
         }
 
-        if (vm.CurrentScreen is DashboardViewModel dvm && dvm.TryCloseModal())
+        if (e.Key is Key.Space or Key.Left or Key.Right or Key.Up or Key.Down or Key.M &&
+            vm.HandleTransportShortcut(e.Key, e.KeyModifiers))
         {
+            if (e.Key == Key.Space)
+            {
+                _swallowNextSpaceKeyUp = true;
+            }
+
             e.Handled = true;
         }
+    }
+
+    private void OnWindowKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Space && _swallowNextSpaceKeyUp)
+        {
+            _swallowNextSpaceKeyUp = false;
+            e.Handled = true;
+        }
+    }
+
+    private static bool IsTextInputFocused(object? source)
+    {
+        if (source is not Visual visual)
+        {
+            return false;
+        }
+
+        return visual is TextBox || visual.FindAncestorOfType<TextBox>() is not null;
     }
 
     private async Task<string?> PickAudioFileAsync()
