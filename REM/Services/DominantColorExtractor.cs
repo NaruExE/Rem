@@ -11,9 +11,11 @@ namespace REM.Services;
 /// </summary>
 public static class DominantColorExtractor
 {
-    public static IBrush CreateAmbientGlowBrush(byte[] imageBytes)
+    public static IBrush CreateAmbientGlowBrush(byte[] imageBytes) =>
+        CreateAmbientGlowBrush(ExtractDominantColor(imageBytes));
+
+    public static IBrush CreateAmbientGlowBrush(Color color)
     {
-        var color = ExtractDominantColor(imageBytes);
         var center = Color.FromArgb(64, color.R, color.G, color.B);
         var mid = Color.FromArgb(24, color.R, color.G, color.B);
         var edge = Color.FromArgb(0, color.R, color.G, color.B);

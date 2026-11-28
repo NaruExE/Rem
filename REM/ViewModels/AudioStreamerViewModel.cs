@@ -14,6 +14,8 @@ public enum YouTubeFeedTabKind
 {
     AccountFyp,
     AccountSubscriptions,
+    Saved,
+    History,
     Topic
 }
 
@@ -21,16 +23,38 @@ public sealed partial class YouTubeSearchResultViewModel : ObservableObject, IDi
 {
     private readonly Func<YouTubeSearchItem, Task> _onPlay;
     private readonly Func<YouTubeSearchItem, Task>? _onDownload;
+    private readonly Func<YouTubeSearchResultViewModel, Task>? _onToggleSave;
+    private readonly Func<YouTubeSearchResultViewModel, Task>? _onRemoveFromHistory;
+    private readonly Func<YouTubeSearchItem, Task>? _onCopyLink;
+    private readonly Func<YouTubeSearchResultViewModel, Task>? _onHideVideo;
+    private readonly Func<YouTubeSearchResultViewModel, Task>? _onHideChannel;
+    private readonly Func<YouTubeSearchItem, Task>? _onOpenChannel;
     private bool _disposed;
 
     public YouTubeSearchResultViewModel(
         YouTubeSearchItem item,
         Func<YouTubeSearchItem, Task> onPlay,
-        Func<YouTubeSearchItem, Task>? onDownload = null)
+        Func<YouTubeSearchItem, Task>? onDownload = null,
+        bool isSaved = false,
+        Func<YouTubeSearchResultViewModel, Task>? onToggleSave = null,
+        bool showRemoveFromHistory = false,
+        Func<YouTubeSearchResultViewModel, Task>? onRemoveFromHistory = null,
+        Func<YouTubeSearchItem, Task>? onCopyLink = null,
+        Func<YouTubeSearchResultViewModel, Task>? onHideVideo = null,
+        Func<YouTubeSearchResultViewModel, Task>? onHideChannel = null,
+        Func<YouTubeSearchItem, Task>? onOpenChannel = null)
     {
         Item = item;
         _onPlay = onPlay;
         _onDownload = onDownload;
+        _isSaved = isSaved;
+        _onToggleSave = onToggleSave;
+        ShowRemoveFromHistory = showRemoveFromHistory;
+        _onRemoveFromHistory = onRemoveFromHistory;
+        _onCopyLink = onCopyLink;
+        _onHideVideo = onHideVideo;
+        _onHideChannel = onHideChannel;
+        _onOpenChannel = onOpenChannel;
     }
 
     public YouTubeSearchItem Item { get; }
@@ -38,6 +62,94 @@ public sealed partial class YouTubeSearchResultViewModel : ObservableObject, IDi
     public string Channel => Item.Channel;
     public string DurationDisplay => Item.DurationDisplay;
     public string EffectiveThumbnailUrl => Item.EffectiveThumbnailUrl;
+    public bool ShowRemoveFromHistory { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasThumbnail))]
+    private Bitmap? _thumbnailBitmap;
+
+    public bool HasThumbnail => ThumbnailBitmap is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveTooltip))]
+    [NotifyPropertyChangedFor(nameof(SaveMenuHeader))]
+    private bool _isSaved;
+
+    public string SaveTooltip => IsSaved ? "Remove from Saved" : "Save / Like video";
+    public string SaveMenuHeader => IsSaved ? "Remove from Saved" : "Save / Like";
+
+    public void SetThumbnail(Bitmap? bitmap)
+    {
+        if (_disposed)
+        {
+            bitmap?.Dispose();
+            return;
+        }
+
+        var prev = ThumbnailBitmap;
+        ThumbnailBitmap = bitmap;
+        prev?.Dispose();
+    }
+
+    [RelayCommand]
+    private Task PlayAsync() => _onPlay(Item);
+
+    [RelayCommand]
+    private Task DownloadAsync() => _onDownload is not null ? _onDownload(Item) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task ToggleSaveAsync() => _onToggleSave is not null ? _onToggleSave(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task RemoveFromHistoryAsync() => _onRemoveFromHistory is not null ? _onRemoveFromHistory(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyLinkAsync() => _onCopyLink is not null ? _onCopyLink(Item) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task HideVideoAsync() => _onHideVideo is not null ? _onHideVideo(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task HideChannelAsync() => _onHideChannel is not null ? _onHideChannel(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task OpenChannelAsync() => _onOpenChannel is not null ? _onOpenChannel(Item) : Task.CompletedTask;
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        ThumbnailBitmap?.Dispose();
+        ThumbnailBitmap = null;
+    }
+}
+
+public sealed partial class YouTubeChannelCardViewModel : ObservableObject, IDisposable
+{
+    private readonly Func<YouTubeChannelItem, Task> _onOpen;
+    private readonly Func<YouTubeChannelItem, Task>? _onPinTopic;
+    private readonly Func<YouTubeChannelItem, Task>? _onCopyLink;
+    private bool _disposed;
+
+    public YouTubeChannelCardViewModel(
+        YouTubeChannelItem item,
+        Func<YouTubeChannelItem, Task> onOpen,
+        Func<YouTubeChannelItem, Task>? onPinTopic = null,
+        Func<YouTubeChannelItem, Task>? onCopyLink = null)
+    {
+        Item = item;
+        _onOpen = onOpen;
+        _onPinTopic = onPinTopic;
+        _onCopyLink = onCopyLink;
+    }
+
+    public YouTubeChannelItem Item { get; }
+    public string Title => Item.Title;
+    public string? ThumbnailUrl => Item.ThumbnailUrl;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasThumbnail))]
@@ -59,10 +171,13 @@ public sealed partial class YouTubeSearchResultViewModel : ObservableObject, IDi
     }
 
     [RelayCommand]
-    private Task PlayAsync() => _onPlay(Item);
+    private Task OpenAsync() => _onOpen(Item);
 
     [RelayCommand]
-    private Task DownloadAsync() => _onDownload is not null ? _onDownload(Item) : Task.CompletedTask;
+    private Task PinTopicAsync() => _onPinTopic is not null ? _onPinTopic(Item) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyLinkAsync() => _onCopyLink is not null ? _onCopyLink(Item) : Task.CompletedTask;
 
     public void Dispose()
     {
@@ -238,6 +353,9 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     private CancellationTokenSource? _thumbCts;
     private YouTubeSearchPager? _topicSearchPager;
     private YouTubeSearchPager? _textSearchPager;
+    private YouTubeSearchItem? _currentYouTubeItem;
+    private string? _currentMediaUrl;
+    private string? _activeChannelUrl;
     private bool _isSyncingSeek;
     private bool _youtubeFeedLoaded;
     private bool _twitchFeedLoaded;
@@ -284,6 +402,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         _engine.PlaybackError += OnEnginePlaybackError;
 
         RefreshModuleHeaderStatus();
+        RefreshHiddenYouTubeCount();
         SyncPlaybackFromEngine();
         LoadFromSettingsAndTabs(loadActiveFeed: true);
     }
@@ -297,6 +416,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     public ObservableCollection<YouTubeFeedTabViewModel> YouTubeTabs { get; } = [];
     public ObservableCollection<YouTubeSearchResultViewModel> YouTubeFeedItems { get; } = [];
     public ObservableCollection<YouTubeSearchResultViewModel> SearchResults { get; } = [];
+    public ObservableCollection<YouTubeChannelCardViewModel> ChannelSearchResults { get; } = [];
 
     public ObservableCollection<TwitchCategoryTabViewModel> CategoryTabs { get; } = [];
     public ObservableCollection<TwitchStreamCardViewModel> LiveStreams { get; } = [];
@@ -314,7 +434,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     public bool IsTwitchMode => IsTwitchActive;
 
     public string SearchWatermark => IsYouTubeMode
-        ? "Search YouTube or paste a YouTube / Twitch URL..."
+        ? "Search YouTube / channels or paste a YouTube / Twitch link..."
         : "Paste a Twitch / YouTube URL or search YouTube...";
 
     public string ActivePlatformLabel => IsTwitchActive ? "Twitch" : "YouTube";
@@ -344,10 +464,44 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     public bool HasActivityNotice => !string.IsNullOrEmpty(ActivityNotice);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowVideoSearchResults))]
+    [NotifyPropertyChangedFor(nameof(ShowChannelSearchResults))]
     private bool _hasSearchResults;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowChannelSearchResults))]
+    private bool _hasChannelSearchResults;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSearchFilterAll))]
+    [NotifyPropertyChangedFor(nameof(IsSearchFilterVideos))]
+    [NotifyPropertyChangedFor(nameof(IsSearchFilterChannels))]
+    [NotifyPropertyChangedFor(nameof(ShowVideoSearchResults))]
+    [NotifyPropertyChangedFor(nameof(ShowChannelSearchResults))]
+    private string _searchFilterMode = "All";
+
+    public bool IsSearchFilterAll => SearchFilterMode == "All";
+    public bool IsSearchFilterVideos => SearchFilterMode == "Videos";
+    public bool IsSearchFilterChannels => SearchFilterMode == "Channels";
+    public bool ShowVideoSearchResults => SearchResults.Count > 0 && SearchFilterMode != "Channels";
+    public bool ShowChannelSearchResults => HasChannelSearchResults && SearchFilterMode != "Videos";
+
+    [ObservableProperty]
     private string _lastSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveChannel))]
+    private string _activeChannelTitle = string.Empty;
+
+    public bool HasActiveChannel => !string.IsNullOrWhiteSpace(ActiveChannelTitle);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHiddenYouTubeItems))]
+    [NotifyPropertyChangedFor(nameof(UnhideYouTubeItemsLabel))]
+    private int _hiddenYouTubeCount;
+
+    public bool HasHiddenYouTubeItems => HiddenYouTubeCount > 0;
+    public string UnhideYouTubeItemsLabel => $"Unhide ({HiddenYouTubeCount})";
 
     [ObservableProperty]
     private bool _showYouTubeThumbnails = true;
@@ -431,7 +585,12 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     private bool _isPlaying;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VolumeDisplay))]
+    [NotifyPropertyChangedFor(nameof(IsVolumeBoosted))]
     private double _volume = 80;
+
+    public string VolumeDisplay => $"{Math.Round(Volume):0}%";
+    public bool IsVolumeBoosted => Volume > 100.5;
 
     [ObservableProperty]
     private double _seekPositionSeconds;
@@ -446,13 +605,35 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
     [ObservableProperty]
     private string _durationDisplay = "0:00";
 
+    [ObservableProperty]
+    private bool _canSaveCurrentYouTube;
+
+    [ObservableProperty]
+    private bool _hasCurrentMediaLink;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentYouTubeSaveTooltip))]
+    private bool _isCurrentYouTubeSaved;
+
+    public string CurrentYouTubeSaveTooltip => IsCurrentYouTubeSaved
+        ? "Remove current video from Saved"
+        : "Save / Like current video";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanClearYouTubeHistory))]
+    private bool _isHistoryTabSelected;
+
+    public bool CanClearYouTubeHistory => IsHistoryTabSelected && YouTubeFeedItems.Count > 0;
+
     public Action? RequestCloseToDashboard { get; set; }
+    public Func<string, Task>? WriteClipboardTextRequested { get; set; }
 
     partial void OnVolumeChanged(double value)
     {
-        var intVol = Math.Clamp((int)Math.Round(value), 0, 100);
+        var intVol = Math.Clamp((int)Math.Round(value), 0, 200);
         _engine.Volume = intVol;
-        _database.SaveSetting(DatabaseService.KeyAudioVolume, intVol.ToString());
+        // Persist at most 100% across restarts so amplified sessions don't unexpectedly blast next launch.
+        _database.SaveSetting(DatabaseService.KeyAudioVolume, Math.Min(intVol, 100).ToString());
     }
 
     partial void OnSeekPositionSecondsChanged(double value)
@@ -490,6 +671,8 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         _profileId = profileId;
         _youtubeFeedLoaded = false;
         _twitchFeedLoaded = false;
+        RefreshHiddenYouTubeCount();
+        SetCurrentYouTubeState(_currentYouTubeItem, _currentMediaUrl);
         LoadFromSettingsAndTabs(loadActiveFeed: true);
     }
 
@@ -505,6 +688,510 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
 
     [RelayCommand]
     private void OpenSettings() => _onOpenSettings();
+
+    [RelayCommand]
+    private void ToggleSaveCurrentYouTube()
+    {
+        if (_disposed || _currentYouTubeItem is null)
+        {
+            return;
+        }
+
+        var nowSaved = _database.ToggleSavedYouTubeVideo(_profileId, _currentYouTubeItem);
+        IsCurrentYouTubeSaved = nowSaved;
+        SyncSavedStateAcrossYouTubeCards(_currentYouTubeItem.VideoId, nowSaved);
+        ActivityNotice = nowSaved
+            ? $"Saved: {_currentYouTubeItem.Title}"
+            : $"Removed from Saved: {_currentYouTubeItem.Title}";
+    }
+
+    [RelayCommand]
+    private async Task ClearYouTubeHistoryAsync()
+    {
+        if (_disposed || !IsHistoryTabSelected || YouTubeFeedItems.Count == 0)
+        {
+            return;
+        }
+
+        var confirmed = await _dialogService.ShowConfirmAsync(
+            "Clear YouTube History",
+            "Clear your saved YouTube watch & listen history for this profile?",
+            "Clear",
+            isDanger: true);
+        if (!confirmed || _disposed)
+        {
+            return;
+        }
+
+        _database.ClearYouTubeWatchHistory(_profileId);
+        if (IsHistoryTabSelected)
+        {
+            ClearYouTubeFeedCards();
+            OnPropertyChanged(nameof(CanClearYouTubeHistory));
+            YouTubeFeedError = "Your YouTube watch & listen history is empty yet.";
+        }
+
+        ActivityNotice = "Cleared YouTube watch & listen history.";
+    }
+
+    private YouTubeSearchResultViewModel CreateYouTubeCard(
+        YouTubeSearchItem item,
+        HashSet<string> savedIds,
+        bool isHistoryTab = false) =>
+        new(
+            item,
+            PlayYouTubeSearchItemAsync,
+            PromptAndDownloadYouTubeItemAsync,
+            isSaved: savedIds.Contains(item.VideoId),
+            onToggleSave: ToggleSaveYouTubeCardAsync,
+            showRemoveFromHistory: isHistoryTab,
+            onRemoveFromHistory: RemoveYouTubeHistoryCardAsync,
+            onCopyLink: CopyYouTubeCardLinkAsync,
+            onHideVideo: HideYouTubeVideoAsync,
+            onHideChannel: HideYouTubeChannelAsync,
+            onOpenChannel: OpenChannelFromVideoAsync);
+
+    private void RefreshHiddenYouTubeCount() =>
+        HiddenYouTubeCount = _database.GetHiddenYouTubeItemCount(_profileId);
+
+    private List<YouTubeSearchItem> FilterHiddenYouTubeItems(IEnumerable<YouTubeSearchItem> items)
+    {
+        var (hiddenVideoIds, hiddenChannels) = _database.GetHiddenYouTubeFilters(_profileId);
+        if (hiddenVideoIds.Count == 0 && hiddenChannels.Count == 0)
+        {
+            return items as List<YouTubeSearchItem> ?? items.ToList();
+        }
+
+        return items.Where(i =>
+            !hiddenVideoIds.Contains(i.VideoId) &&
+            (string.IsNullOrWhiteSpace(i.Channel) || !hiddenChannels.Contains(i.Channel.Trim()))).ToList();
+    }
+
+    private async Task WriteClipboardWithNoticeAsync(string? text, string notice)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(text) || WriteClipboardTextRequested is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await WriteClipboardTextRequested(text);
+            ActivityNotice = notice;
+        }
+        catch (Exception ex)
+        {
+            _actionLog.Log("Warning", $"Clipboard write failed: {ex.Message}");
+        }
+    }
+
+    private static void RemoveCardsWhere(
+        ObservableCollection<YouTubeSearchResultViewModel> collection,
+        Func<YouTubeSearchResultViewModel, bool> predicate)
+    {
+        for (var i = collection.Count - 1; i >= 0; i--)
+        {
+            var card = collection[i];
+            if (predicate(card))
+            {
+                collection.RemoveAt(i);
+                card.Dispose();
+            }
+        }
+    }
+
+    [RelayCommand]
+    private void SetSearchFilter(string? mode)
+    {
+        SearchFilterMode = string.IsNullOrWhiteSpace(mode) ? "All" : mode;
+    }
+
+    [RelayCommand]
+    private async Task ResetHiddenYouTubeItemsAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _database.ClearHiddenYouTubeItems(_profileId);
+        RefreshHiddenYouTubeCount();
+        ActivityNotice = "Restored hidden YouTube videos & channels.";
+
+        if (!HasSearchResults && !IsTwitchActive)
+        {
+            var active = YouTubeTabs.FirstOrDefault(t => t.IsSelected) ?? YouTubeTabs.FirstOrDefault();
+            if (active is not null)
+            {
+                await LoadYouTubeTabAsync(active);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task PinActiveChannelAsTopicAsync()
+    {
+        var title = ActiveChannelTitle.Trim();
+        if (_disposed || string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+
+        _database.AddProfileYouTubeTopic(_profileId, title);
+        _actionLog.Log("YouTube", $"Pinned channel topic '{title}'.");
+        RebuildYouTubeTabs(title);
+        ActivityNotice = $"Pinned '{title}' to YouTube tabs.";
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task DownloadCurrentYouTubeAsync()
+    {
+        if (_disposed || _currentYouTubeItem is null)
+        {
+            return;
+        }
+
+        await PromptAndDownloadYouTubeItemAsync(_currentYouTubeItem);
+    }
+
+    [RelayCommand]
+    private Task CopyCurrentMediaLinkAsync() =>
+        WriteClipboardWithNoticeAsync(_currentMediaUrl ?? _currentYouTubeItem?.Url, "Copied current media link to clipboard.");
+
+    private Task CopyYouTubeCardLinkAsync(YouTubeSearchItem item) =>
+        WriteClipboardWithNoticeAsync(item.Url, $"Copied link: {item.Title}");
+
+    private Task HideYouTubeVideoAsync(YouTubeSearchResultViewModel card)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        var key = string.IsNullOrWhiteSpace(card.Item.VideoId) ? card.Item.Url : card.Item.VideoId;
+        _database.HideYouTubeItem(_profileId, "video", key, card.Title);
+        RemoveCardsWhere(YouTubeFeedItems, c => string.Equals(c.Item.VideoId, card.Item.VideoId, StringComparison.Ordinal));
+        RemoveCardsWhere(SearchResults, c => string.Equals(c.Item.VideoId, card.Item.VideoId, StringComparison.Ordinal));
+        OnPropertyChanged(nameof(ShowVideoSearchResults));
+        HasSearchResults = SearchResults.Count > 0 || HasChannelSearchResults || HasActiveChannel;
+        RefreshHiddenYouTubeCount();
+        ActivityNotice = $"Hidden video: {card.Title}";
+        return Task.CompletedTask;
+    }
+
+    private Task HideYouTubeChannelAsync(YouTubeSearchResultViewModel card)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(card.Channel))
+        {
+            return Task.CompletedTask;
+        }
+
+        var ch = card.Channel.Trim();
+        _database.HideYouTubeItem(_profileId, "channel", ch, ch);
+        RemoveCardsWhere(YouTubeFeedItems, c => string.Equals(c.Channel.Trim(), ch, StringComparison.OrdinalIgnoreCase));
+        RemoveCardsWhere(SearchResults, c => string.Equals(c.Channel.Trim(), ch, StringComparison.OrdinalIgnoreCase));
+        OnPropertyChanged(nameof(ShowVideoSearchResults));
+        HasSearchResults = SearchResults.Count > 0 || HasChannelSearchResults || HasActiveChannel;
+        RefreshHiddenYouTubeCount();
+        ActivityNotice = $"Hidden channel: {ch}";
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenChannelFromVideoAsync(YouTubeSearchItem item)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(item.Channel))
+        {
+            return;
+        }
+
+        var ct = ResetWorkToken();
+        IsBusy = true;
+        try
+        {
+            ActivityNotice = $"Finding channel \"{item.Channel}\"...";
+            var matches = await _youtube.SearchChannelsAsync(item.Channel, 3, ct);
+            var match = matches.FirstOrDefault(c => string.Equals(c.Title, item.Channel, StringComparison.OrdinalIgnoreCase))
+                ?? matches.FirstOrDefault();
+            if (match is not null)
+            {
+                await OpenYouTubeChannelCoreAsync(match.Url, match.Title, ct);
+                return;
+            }
+
+            ActivityNotice = $"No channel page found for \"{item.Channel}\".";
+        }
+        catch (OperationCanceledException)
+        {
+            ActivityNotice = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            ActivityNotice = string.Empty;
+            _actionLog.Log("Warning", $"Open channel failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    private async Task OpenChannelCardAsync(YouTubeChannelItem channel)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var ct = ResetWorkToken();
+        IsBusy = true;
+        try
+        {
+            await OpenYouTubeChannelCoreAsync(channel.Url, channel.Title, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            ActivityNotice = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            ActivityNotice = string.Empty;
+            _actionLog.Log("Warning", $"Channel uploads failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    private Task PinChannelCardAsTopicAsync(YouTubeChannelItem channel)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(channel.Title))
+        {
+            return Task.CompletedTask;
+        }
+
+        _database.AddProfileYouTubeTopic(_profileId, channel.Title);
+        _actionLog.Log("YouTube", $"Pinned channel topic '{channel.Title}'.");
+        RebuildYouTubeTabs(channel.Title);
+        ActivityNotice = $"Pinned '{channel.Title}' to YouTube tabs.";
+        return Task.CompletedTask;
+    }
+
+    private Task CopyChannelCardLinkAsync(YouTubeChannelItem channel) =>
+        WriteClipboardWithNoticeAsync(channel.Url, $"Copied channel link: {channel.Title}");
+
+    private async Task OpenYouTubeChannelCoreAsync(string channelUrlOrId, string? titleOverride, CancellationToken ct)
+    {
+        if (IsTwitchActive)
+        {
+            IsTwitchActive = false;
+            _database.SaveSetting(DatabaseService.KeyAudioActivePlatform, "youtube");
+        }
+
+        ActivityNotice = string.IsNullOrWhiteSpace(titleOverride)
+            ? "Loading YouTube channel videos..."
+            : $"Loading videos from {titleOverride}...";
+
+        var (resolvedTitle, videos) = await _youtube.FetchChannelUploadsAsync(channelUrlOrId, 24, ct);
+        var filtered = FilterHiddenYouTubeItems(videos);
+        ClearYouTubeSearchCards(disposePager: true);
+
+        var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
+        foreach (var video in filtered)
+        {
+            SearchResults.Add(CreateYouTubeCard(video, savedIds));
+        }
+
+        var finalTitle = !string.IsNullOrWhiteSpace(titleOverride) ? titleOverride : resolvedTitle;
+        _activeChannelUrl = channelUrlOrId;
+        ActiveChannelTitle = finalTitle;
+        LastSearchQuery = finalTitle;
+        SearchFilterMode = "Videos";
+        HasChannelSearchResults = false;
+        HasSearchResults = true;
+        CanShowMoreYouTubeSearch = false;
+        OnPropertyChanged(nameof(ShowVideoSearchResults));
+        OnPropertyChanged(nameof(ShowChannelSearchResults));
+        ActivityNotice = SearchResults.Count == 0
+            ? $"No public videos found for {finalTitle}."
+            : string.Empty;
+
+        if (SearchResults.Count > 0 && ShowYouTubeThumbnails)
+        {
+            _ = LoadYouTubeThumbnailsAsync(SearchResults.ToList());
+        }
+    }
+
+    private async Task LoadYouTubeChannelThumbnailsAsync(List<YouTubeChannelCardViewModel> cards)
+    {
+        var ct = GetOrCreateThumbToken();
+        foreach (var card in cards)
+        {
+            if (ct.IsCancellationRequested || _disposed || string.IsNullOrWhiteSpace(card.ThumbnailUrl))
+            {
+                continue;
+            }
+
+            var bmp = await _youtube.LoadSmallThumbnailAsync(card.ThumbnailUrl, ct);
+            if (bmp is not null)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (_disposed || ct.IsCancellationRequested)
+                    {
+                        bmp.Dispose();
+                        return;
+                    }
+
+                    card.SetThumbnail(bmp);
+                });
+            }
+        }
+    }
+
+    private void ClearYouTubeChannelCards(bool notifySearchFlags = true)
+    {
+        foreach (var ch in ChannelSearchResults)
+        {
+            ch.Dispose();
+        }
+
+        ChannelSearchResults.Clear();
+        HasChannelSearchResults = false;
+        if (notifySearchFlags)
+        {
+            OnPropertyChanged(nameof(ShowChannelSearchResults));
+        }
+    }
+
+    private Task ToggleSaveYouTubeCardAsync(YouTubeSearchResultViewModel card)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        var nowSaved = _database.ToggleSavedYouTubeVideo(_profileId, card.Item);
+        SyncSavedStateAcrossYouTubeCards(card.Item.VideoId, nowSaved);
+        if (_currentYouTubeItem is not null &&
+            string.Equals(_currentYouTubeItem.VideoId, card.Item.VideoId, StringComparison.Ordinal))
+        {
+            IsCurrentYouTubeSaved = nowSaved;
+        }
+
+        ActivityNotice = nowSaved
+            ? $"Saved: {card.Title}"
+            : $"Removed from Saved: {card.Title}";
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveYouTubeHistoryCardAsync(YouTubeSearchResultViewModel card)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        _database.RemoveYouTubeHistoryItem(_profileId, card.Item.VideoId);
+        if (IsHistoryTabSelected && YouTubeFeedItems.Remove(card))
+        {
+            card.Dispose();
+            OnPropertyChanged(nameof(CanClearYouTubeHistory));
+            if (YouTubeFeedItems.Count == 0)
+            {
+                YouTubeFeedError = "Your YouTube watch & listen history is empty yet.";
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void SyncSavedStateAcrossYouTubeCards(string videoId, bool isSaved)
+    {
+        var activeTab = YouTubeTabs.FirstOrDefault(t => t.IsSelected);
+        if (!isSaved && activeTab is { Kind: YouTubeFeedTabKind.Saved })
+        {
+            var toRemove = YouTubeFeedItems
+                .Where(c => string.Equals(c.Item.VideoId, videoId, StringComparison.Ordinal))
+                .ToList();
+            foreach (var c in toRemove)
+            {
+                YouTubeFeedItems.Remove(c);
+                c.Dispose();
+            }
+
+            if (YouTubeFeedItems.Count == 0)
+            {
+                YouTubeFeedError = "No saved YouTube videos yet — click the heart icon on any video card or in the player bar to save it.";
+            }
+        }
+        else
+        {
+            foreach (var c in YouTubeFeedItems)
+            {
+                if (string.Equals(c.Item.VideoId, videoId, StringComparison.Ordinal))
+                {
+                    c.IsSaved = isSaved;
+                }
+            }
+        }
+
+        foreach (var c in SearchResults)
+        {
+            if (string.Equals(c.Item.VideoId, videoId, StringComparison.Ordinal))
+            {
+                c.IsSaved = isSaved;
+            }
+        }
+    }
+
+    private void SetCurrentYouTubeState(YouTubeSearchItem? item, string? mediaUrl = null)
+    {
+        _currentYouTubeItem = item;
+        _currentMediaUrl = string.IsNullOrWhiteSpace(mediaUrl) ? item?.Url : mediaUrl;
+        HasCurrentMediaLink = !string.IsNullOrWhiteSpace(_currentMediaUrl);
+        if (item is null || string.IsNullOrWhiteSpace(item.VideoId))
+        {
+            CanSaveCurrentYouTube = false;
+            IsCurrentYouTubeSaved = false;
+            return;
+        }
+
+        CanSaveCurrentYouTube = true;
+        IsCurrentYouTubeSaved = _database.IsYouTubeVideoSaved(_profileId, item.VideoId);
+    }
+
+    private void RecordPlayedYouTube(YouTubeSearchItem item)
+    {
+        _database.RecordYouTubeWatchHistory(_profileId, item);
+        SetCurrentYouTubeState(item, item.Url);
+        if (IsHistoryTabSelected)
+        {
+            var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
+            var existing = YouTubeFeedItems.FirstOrDefault(c => string.Equals(c.Item.VideoId, item.VideoId, StringComparison.Ordinal));
+            if (existing is not null)
+            {
+                YouTubeFeedItems.Remove(existing);
+                existing.Dispose();
+            }
+
+            var card = CreateYouTubeCard(item, savedIds, isHistoryTab: true);
+            YouTubeFeedItems.Insert(0, card);
+            YouTubeFeedError = string.Empty;
+            OnPropertyChanged(nameof(CanClearYouTubeHistory));
+            if (ShowYouTubeThumbnails)
+            {
+                _ = LoadYouTubeThumbnailsAsync([card], resetExisting: false);
+            }
+        }
+    }
 
     [RelayCommand]
     private void TogglePlatform()
@@ -632,7 +1319,44 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         IsBusy = true;
         try
         {
-            if (YouTubeAudioService.IsYouTubeUrl(input))
+            var normalized = YouTubeAudioService.NormalizeMediaInputUrl(input);
+            if (YouTubeAudioService.IsYouTubeChannelUrl(normalized))
+            {
+                await OpenYouTubeChannelCoreAsync(normalized, null, ct);
+            }
+            else if (YouTubeAudioService.IsYouTubePlaylistUrl(normalized))
+            {
+                if (IsTwitchActive)
+                {
+                    IsTwitchActive = false;
+                    _database.SaveSetting(DatabaseService.KeyAudioActivePlatform, "youtube");
+                }
+
+                ActivityNotice = "Loading YouTube playlist...";
+                var playlistItems = await _youtube.FetchPlaylistVideosAsync(normalized, 30, ct);
+                var filtered = FilterHiddenYouTubeItems(playlistItems);
+                ClearYouTubeSearchCards(disposePager: true);
+                var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
+                foreach (var hit in filtered)
+                {
+                    SearchResults.Add(CreateYouTubeCard(hit, savedIds));
+                }
+
+                LastSearchQuery = "YouTube Playlist";
+                SearchFilterMode = "Videos";
+                HasSearchResults = SearchResults.Count > 0;
+                CanShowMoreYouTubeSearch = false;
+                OnPropertyChanged(nameof(ShowVideoSearchResults));
+                ActivityNotice = SearchResults.Count == 0
+                    ? "No playable videos found in that playlist."
+                    : string.Empty;
+
+                if (SearchResults.Count > 0 && ShowYouTubeThumbnails)
+                {
+                    _ = LoadYouTubeThumbnailsAsync(SearchResults.ToList());
+                }
+            }
+            else if (YouTubeAudioService.IsYouTubeUrl(normalized))
             {
                 ClearSearchResults();
                 ActivityNotice = "Extracting YouTube audio stream...";
@@ -640,15 +1364,17 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 var cookieArg = ResolveConfiguredCookieArg(out _);
                 var qualityPreset = _database.GetSetting(DatabaseService.KeyAudioQualityPreset) ?? "max";
                 var track = await _youtube.ExtractAudioOnlyAsync(
-                    input, allowFallback, ct, cookieArg, qualityPreset: qualityPreset);
+                    normalized, allowFallback, ct, cookieArg, qualityPreset: qualityPreset);
                 await _engine.PlayAsync(track, ct);
+                var videoId = YouTubeAudioService.TryExtractYouTubeVideoId(normalized) ?? normalized;
+                RecordPlayedYouTube(new YouTubeSearchItem(videoId, track.Title, track.Channel, track.Duration, normalized));
                 ActivityNotice = string.Empty;
                 _actionLog.Log("Audio", $"Playing YouTube: {track.Title}");
             }
-            else if (YouTubeAudioService.IsTwitchUrl(input))
+            else if (YouTubeAudioService.IsTwitchUrl(normalized))
             {
                 ClearSearchResults();
-                await ExtractAndPlayTwitchUrlAsync(input, titleOverride: null, channelOverride: null, gameOverride: "Twitch", ct);
+                await ExtractAndPlayTwitchUrlAsync(normalized, titleOverride: null, channelOverride: null, gameOverride: "Twitch", ct);
             }
             else
             {
@@ -661,21 +1387,52 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 ActivityNotice = $"Searching YouTube for \"{input}\"...";
                 DisposePager(ref _textSearchPager);
                 _textSearchPager = _youtube.CreateSearchPager(input);
-                var (hits, hasMoreSearch) = await _textSearchPager.FetchNextAsync(DefaultYouTubeTopicCount, ct);
+                var videoTask = _textSearchPager.FetchNextAsync(DefaultYouTubeTopicCount, ct);
+                var channelTask = _youtube.SearchChannelsAsync(input, 8, ct);
+                await Task.WhenAll(videoTask, channelTask);
+
+                var (hits, hasMoreSearch) = await videoTask;
+                var channelHits = await channelTask;
+                var filteredHits = FilterHiddenYouTubeItems(hits);
+
                 ClearYouTubeSearchCards(disposePager: false);
-                foreach (var hit in hits)
+                var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
+                foreach (var hit in filteredHits)
                 {
-                    SearchResults.Add(new YouTubeSearchResultViewModel(hit, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync));
+                    SearchResults.Add(CreateYouTubeCard(hit, savedIds));
+                }
+
+                foreach (var ch in channelHits)
+                {
+                    ChannelSearchResults.Add(new YouTubeChannelCardViewModel(
+                        ch,
+                        OpenChannelCardAsync,
+                        PinChannelCardAsTopicAsync,
+                        CopyChannelCardLinkAsync));
                 }
 
                 LastSearchQuery = input;
-                HasSearchResults = SearchResults.Count > 0;
-                CanShowMoreYouTubeSearch = HasSearchResults && hasMoreSearch;
-                ActivityNotice = SearchResults.Count == 0 ? $"No YouTube results found for \"{input}\"." : string.Empty;
+                HasChannelSearchResults = ChannelSearchResults.Count > 0;
+                SearchFilterMode = "All";
+                HasSearchResults = SearchResults.Count > 0 || HasChannelSearchResults;
+                CanShowMoreYouTubeSearch = hits.Count > 0 && hasMoreSearch;
+                OnPropertyChanged(nameof(ShowVideoSearchResults));
+                OnPropertyChanged(nameof(ShowChannelSearchResults));
+                ActivityNotice = !HasSearchResults
+                    ? $"No YouTube results found for \"{input}\"."
+                    : string.Empty;
 
-                if (HasSearchResults && ShowYouTubeThumbnails)
+                if (ShowYouTubeThumbnails)
                 {
-                    _ = LoadYouTubeThumbnailsAsync(SearchResults.ToList());
+                    if (SearchResults.Count > 0)
+                    {
+                        _ = LoadYouTubeThumbnailsAsync(SearchResults.ToList());
+                    }
+
+                    if (ChannelSearchResults.Count > 0)
+                    {
+                        _ = LoadYouTubeChannelThumbnailsAsync(ChannelSearchResults.ToList());
+                    }
                 }
             }
         }
@@ -797,18 +1554,22 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
             var existingIds = new HashSet<string>(
                 SearchResults.Select(i => i.Item.VideoId),
                 StringComparer.Ordinal);
+            var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
             var addedCards = new List<YouTubeSearchResultViewModel>();
 
-            foreach (var item in fetched)
+            var filteredFetched = FilterHiddenYouTubeItems(fetched);
+            foreach (var item in filteredFetched)
             {
                 if (existingIds.Add(item.VideoId))
                 {
-                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync);
+                    var card = CreateYouTubeCard(item, savedIds);
                     SearchResults.Add(card);
                     addedCards.Add(card);
                 }
             }
 
+            OnPropertyChanged(nameof(ShowVideoSearchResults));
+            HasSearchResults = SearchResults.Count > 0 || HasChannelSearchResults || HasActiveChannel;
             CanShowMoreYouTubeSearch = hasMore;
             if (addedCards.Count == 0 && !hasMore)
             {
@@ -930,13 +1691,15 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
             var existingIds = new HashSet<string>(
                 YouTubeFeedItems.Select(i => i.Item.VideoId),
                 StringComparer.Ordinal);
+            var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
             var addedCards = new List<YouTubeSearchResultViewModel>();
 
-            foreach (var item in fetched)
+            var filteredFeedMore = FilterHiddenYouTubeItems(fetched);
+            foreach (var item in filteredFeedMore)
             {
                 if (existingIds.Add(item.VideoId))
                 {
-                    var card = new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync);
+                    var card = CreateYouTubeCard(item, savedIds);
                     YouTubeFeedItems.Add(card);
                     addedCards.Add(card);
                 }
@@ -1052,23 +1815,26 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
 
         var trimmedAny = false;
         var activeYt = YouTubeTabs.FirstOrDefault(t => t.IsSelected);
-        var defaultYtCount = activeYt is { Kind: YouTubeFeedTabKind.Topic }
-            ? DefaultYouTubeTopicCount
-            : DefaultYouTubeFypCount;
-
-        if (YouTubeFeedItems.Count > defaultYtCount)
+        if (activeYt is not { Kind: YouTubeFeedTabKind.Saved or YouTubeFeedTabKind.History })
         {
-            for (var i = YouTubeFeedItems.Count - 1; i >= defaultYtCount; i--)
-            {
-                var item = YouTubeFeedItems[i];
-                YouTubeFeedItems.RemoveAt(i);
-                item.Dispose();
-            }
+            var defaultYtCount = activeYt is { Kind: YouTubeFeedTabKind.Topic }
+                ? DefaultYouTubeTopicCount
+                : DefaultYouTubeFypCount;
 
-            _youTubeLoadedLimit = defaultYtCount;
-            DisposePager(ref _topicSearchPager);
-            CanShowMoreYouTube = YouTubeFeedItems.Count > 0;
-            trimmedAny = true;
+            if (YouTubeFeedItems.Count > defaultYtCount)
+            {
+                for (var i = YouTubeFeedItems.Count - 1; i >= defaultYtCount; i--)
+                {
+                    var item = YouTubeFeedItems[i];
+                    YouTubeFeedItems.RemoveAt(i);
+                    item.Dispose();
+                }
+
+                _youTubeLoadedLimit = defaultYtCount;
+                DisposePager(ref _topicSearchPager);
+                CanShowMoreYouTube = YouTubeFeedItems.Count > 0;
+                trimmedAny = true;
+            }
         }
 
         if (LiveStreams.Count > DefaultTwitchPageSize)
@@ -1109,6 +1875,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         _engine.PositionChanged -= OnEnginePositionChanged;
         _engine.PlaybackError -= OnEnginePlaybackError;
         RequestCloseToDashboard = null;
+        WriteClipboardTextRequested = null;
 
         CancelAndDispose(ref _workCts);
         CancelAndDispose(ref _thumbCts);
@@ -1118,6 +1885,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         ClearLiveStreamCards();
         ClearYouTubeFeedCards();
         ClearYouTubeSearchCards();
+        ClearYouTubeChannelCards();
         YouTubeTabs.Clear();
         CategoryTabs.Clear();
         CategorySearchResults.Clear();
@@ -1244,6 +2012,14 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 knownDuration: item.Duration,
                 qualityPreset: qualityPreset);
             await _engine.PlayAsync(track, ct);
+            var playedItem = new YouTubeSearchItem(
+                string.IsNullOrWhiteSpace(item.VideoId) ? (YouTubeAudioService.TryExtractYouTubeVideoId(item.Url) ?? item.Url) : item.VideoId,
+                string.IsNullOrWhiteSpace(track.Title) ? item.Title : track.Title,
+                string.IsNullOrWhiteSpace(track.Channel) ? item.Channel : track.Channel,
+                track.Duration ?? item.Duration,
+                item.Url,
+                item.ThumbnailUrl);
+            RecordPlayedYouTube(playedItem);
             ActivityNotice = string.Empty;
             _actionLog.Log("Audio", $"Playing YouTube: {track.Title}");
         }
@@ -1344,6 +2120,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         var track = new ExtractedAudioTrack(title, channel, result.StreamUrl, IsLive: true, Duration: null, source);
 
         await _engine.PlayAsync(track, ct);
+        SetCurrentYouTubeState(null, url);
         ActivityNotice = string.Empty;
         _actionLog.Log("Audio", $"Playing Twitch stream: {channel} — {title}");
     }
@@ -1413,6 +2190,8 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
 
         YouTubeTabs.Add(new YouTubeFeedTabViewModel("For You", YouTubeFeedTabKind.AccountFyp, LoadYouTubeTabAsync));
         YouTubeTabs.Add(new YouTubeFeedTabViewModel("Subscriptions", YouTubeFeedTabKind.AccountSubscriptions, LoadYouTubeTabAsync));
+        YouTubeTabs.Add(new YouTubeFeedTabViewModel("Saved", YouTubeFeedTabKind.Saved, LoadYouTubeTabAsync));
+        YouTubeTabs.Add(new YouTubeFeedTabViewModel("History", YouTubeFeedTabKind.History, LoadYouTubeTabAsync));
 
         foreach (var topic in savedTopics)
         {
@@ -1442,6 +2221,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
             t.IsSelected = ReferenceEquals(t, tab);
         }
 
+        IsHistoryTabSelected = tab.Kind == YouTubeFeedTabKind.History;
         ClearSearchResults();
         YouTubeFeedError = string.Empty;
         ShowYouTubeBrowserPrompt = false;
@@ -1458,12 +2238,23 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
             List<YouTubeSearchItem> items;
             var hasMoreTopic = true;
             DisposePager(ref _topicSearchPager);
-            if (tab.Kind is YouTubeFeedTabKind.AccountFyp or YouTubeFeedTabKind.AccountSubscriptions)
+            if (tab.Kind == YouTubeFeedTabKind.Saved)
+            {
+                items = _database.GetSavedYouTubeVideos(_profileId);
+                hasMoreTopic = false;
+            }
+            else if (tab.Kind == YouTubeFeedTabKind.History)
+            {
+                items = _database.GetYouTubeWatchHistory(_profileId);
+                hasMoreTopic = false;
+            }
+            else if (tab.Kind is YouTubeFeedTabKind.AccountFyp or YouTubeFeedTabKind.AccountSubscriptions)
             {
                 var cookieArg = ResolveConfiguredCookieArg(out var statusMessage);
                 if (string.IsNullOrWhiteSpace(cookieArg))
                 {
                     ClearYouTubeFeedCards();
+                    OnPropertyChanged(nameof(CanClearYouTubeHistory));
                     ShowYouTubeBrowserPrompt = true;
                     YouTubeBrowserPromptDetail = statusMessage;
                     _youtubeFeedLoaded = true;
@@ -1484,6 +2275,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 if (feedResult.IsMissingExecutable)
                 {
                     ClearYouTubeFeedCards();
+                    OnPropertyChanged(nameof(CanClearYouTubeHistory));
                     YouTubeFeedError = feedResult.ErrorMessage ?? "yt-dlp.exe is missing.";
                     _youtubeFeedLoaded = true;
                     return;
@@ -1492,6 +2284,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 if (!feedResult.Success)
                 {
                     ClearYouTubeFeedCards();
+                    OnPropertyChanged(nameof(CanClearYouTubeHistory));
                     YouTubeFeedError = string.IsNullOrWhiteSpace(feedResult.ErrorMessage)
                         ? "Could not load your YouTube account feed. Make sure you are signed in to YouTube in Zen/selected browser."
                         : feedResult.ErrorMessage;
@@ -1509,19 +2302,31 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
                 ActivityNotice = string.Empty;
             }
 
+            if (tab.Kind is not (YouTubeFeedTabKind.Saved or YouTubeFeedTabKind.History))
+            {
+                items = FilterHiddenYouTubeItems(items);
+            }
+
             ClearYouTubeFeedCards();
+            var savedIds = _database.GetSavedYouTubeVideoIds(_profileId);
+            var isHistory = tab.Kind == YouTubeFeedTabKind.History;
             foreach (var item in items)
             {
-                YouTubeFeedItems.Add(new YouTubeSearchResultViewModel(item, PlayYouTubeSearchItemAsync, PromptAndDownloadYouTubeItemAsync));
+                YouTubeFeedItems.Add(CreateYouTubeCard(item, savedIds, isHistory));
             }
 
             _youtubeFeedLoaded = true;
             CanShowMoreYouTube = items.Count > 0 && hasMoreTopic;
+            OnPropertyChanged(nameof(CanClearYouTubeHistory));
             if (items.Count == 0)
             {
-                YouTubeFeedError = tab.Kind == YouTubeFeedTabKind.AccountFyp
-                    ? "Your YouTube For You feed returned no videos. Try refreshing or pinning a topic tab."
-                    : $"No videos returned for '{tab.Name}'.";
+                YouTubeFeedError = tab.Kind switch
+                {
+                    YouTubeFeedTabKind.Saved => "No saved YouTube videos yet — click the heart icon on any video card or in the player bar to save it.",
+                    YouTubeFeedTabKind.History => "Your YouTube watch & listen history is empty yet.",
+                    YouTubeFeedTabKind.AccountFyp => "Your YouTube For You feed returned no videos. Try refreshing or pinning a topic tab.",
+                    _ => $"No videos returned for '{tab.Name}'."
+                };
             }
             else if (ShowYouTubeThumbnails)
             {
@@ -1773,8 +2578,14 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         }
 
         SearchResults.Clear();
+        ClearYouTubeChannelCards(notifySearchFlags: false);
+        _activeChannelUrl = null;
+        ActiveChannelTitle = string.Empty;
+        SearchFilterMode = "All";
         HasSearchResults = false;
         CanShowMoreYouTubeSearch = false;
+        OnPropertyChanged(nameof(ShowVideoSearchResults));
+        OnPropertyChanged(nameof(ShowChannelSearchResults));
     }
 
     private static void DisposePager(ref YouTubeSearchPager? slot)
@@ -1904,6 +2715,7 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
         HasCurrentTrack = track is not null;
         if (track is null)
         {
+            SetCurrentYouTubeState(null, null);
             CurrentTrackTitle = "Nothing playing";
             CurrentTrackChannel = "Browse YouTube FYP or Twitch Live";
             CurrentSourceLabel = string.Empty;
@@ -1913,6 +2725,16 @@ public sealed partial class AudioStreamerViewModel : ObservableObject, IDisposab
             PositionDisplay = "0:00";
             DurationDisplay = "0:00";
             return;
+        }
+
+        if (_currentYouTubeItem is null && track.SourceLabel.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
+        {
+            var match = _database.GetYouTubeWatchHistory(_profileId, 5)
+                .FirstOrDefault(h => string.Equals(h.Title, track.Title, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                SetCurrentYouTubeState(match, match.Url);
+            }
         }
 
         CurrentTrackTitle = track.Title;

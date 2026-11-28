@@ -74,6 +74,7 @@ public partial class StreamWatcherView : UserControl
             _boundVm.PropertyChanged -= OnBoundViewModelPropertyChanged;
             _boundVm.FullscreenChanged -= OnViewModelFullscreenChanged;
             _boundVm.ChatMessages.CollectionChanged -= OnChatMessagesCollectionChanged;
+            _boundVm.WriteClipboardTextRequested = null;
             _boundVm = null;
         }
 
@@ -83,6 +84,7 @@ public partial class StreamWatcherView : UserControl
             vm.PropertyChanged += OnBoundViewModelPropertyChanged;
             vm.FullscreenChanged += OnViewModelFullscreenChanged;
             vm.ChatMessages.CollectionChanged += OnChatMessagesCollectionChanged;
+            vm.WriteClipboardTextRequested = WriteClipboardAsync;
 
             if (_isAttached && vm.IsWatchMode)
             {
@@ -550,6 +552,15 @@ public partial class StreamWatcherView : UserControl
         if (_boundVm is not null)
         {
             _ = _boundVm.CommitScrubAsync(SeekSlider.Value);
+        }
+    }
+
+    private async Task WriteClipboardAsync(string text)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is not null && !string.IsNullOrWhiteSpace(text))
+        {
+            await clipboard.SetTextAsync(text);
         }
     }
 }

@@ -49,6 +49,7 @@ public sealed class DatabaseService
     public const string KeySpotifyVolume = "SpotifyVolume";
     public const string KeySpotifyShowPlaylistIcons = "SpotifyShowPlaylistIcons";
     public const string KeySpotifyShowTrackCovers = "SpotifyShowTrackCovers";
+    public const string KeySpotifyShowPlayBarCover = "SpotifyShowPlayBarCover";
     public const string KeySpotifyShowAmbientGlow = "SpotifyShowAmbientGlow";
     public const string KeySpotifyShowRemArt = "SpotifyShowRemArt";
     public const string KeySpotifyRemArtFile = "SpotifyRemArtFile";
@@ -59,6 +60,8 @@ public sealed class DatabaseService
     public const string KeySpotifyLyricsFontSize = "SpotifyLyricsFontSize";
     public const string KeySpotifyLyricsCentered = "SpotifyLyricsCentered";
     public const string KeySpotifyPreferDeepCuts = "SpotifyPreferDeepCuts";
+    public const string KeySpotifyHomeLayout = "SpotifyHomeLayout";
+    public const string KeySpotifyHomeCoverQuality = "SpotifyHomeCoverQuality";
     public const string KeyVideoVolume = "VideoVolume";
     public const string KeyVideoQuality = "VideoQuality";
     public const string KeyTmdbBearerToken = "TmdbBearerToken";
@@ -67,6 +70,8 @@ public sealed class DatabaseService
     public const string KeyMoviesBlockedAdDomains = "MoviesBlockedAdDomains";
     public const string KeyAutoCheckUpdates = "AutoCheckUpdates";
     public const string KeySkippedUpdateVersion = "SkippedUpdateVersion";
+    public const string KeyMiniPlayerOffsetX = "MiniPlayerOffsetX";
+    public const string KeyMiniPlayerOffsetY = "MiniPlayerOffsetY";
 
     private static readonly HashSet<string> SecretKeys = new(StringComparer.Ordinal)
     {
@@ -262,6 +267,45 @@ public sealed class DatabaseService
                     LookupKey TEXT PRIMARY KEY,
                     TrackJson TEXT NOT NULL,
                     UpdatedAt TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS YouTubeSavedVideos (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProfileId INTEGER NOT NULL,
+                    VideoId TEXT NOT NULL,
+                    Title TEXT NOT NULL,
+                    Channel TEXT NOT NULL,
+                    DurationSeconds INTEGER NOT NULL DEFAULT 0,
+                    Url TEXT NOT NULL,
+                    ThumbnailUrl TEXT NULL,
+                    SavedAt TEXT NOT NULL,
+                    UNIQUE (ProfileId, VideoId),
+                    FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS YouTubeWatchHistory (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProfileId INTEGER NOT NULL,
+                    VideoId TEXT NOT NULL,
+                    Title TEXT NOT NULL,
+                    Channel TEXT NOT NULL,
+                    DurationSeconds INTEGER NOT NULL DEFAULT 0,
+                    Url TEXT NOT NULL,
+                    ThumbnailUrl TEXT NULL,
+                    WatchedAt TEXT NOT NULL,
+                    UNIQUE (ProfileId, VideoId),
+                    FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS YouTubeHiddenItems (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProfileId INTEGER NOT NULL,
+                    Kind TEXT NOT NULL,
+                    ItemKey TEXT NOT NULL,
+                    Label TEXT NOT NULL,
+                    HiddenAt TEXT NOT NULL,
+                    UNIQUE (ProfileId, Kind, ItemKey),
+                    FOREIGN KEY (ProfileId) REFERENCES Profiles(Id) ON DELETE CASCADE
                 );
                 """;
             cmd.ExecuteNonQuery();
@@ -536,6 +580,328 @@ public sealed class DatabaseService
             """;
         cmd.Parameters.AddWithValue("$profileId", profileId);
         cmd.Parameters.AddWithValue("$name", topicName.Trim());
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<YouTubeSearchItem> GetSavedYouTubeVideos(long profileId, int limit = 200)
+    {
+        var list = new List<YouTubeSearchItem>();
+        if (profileId <= 0)
+        {
+            return list;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT VideoId, Title, Channel, DurationSeconds, Url, ThumbnailUrl
+            FROM YouTubeSavedVideos
+            WHERE ProfileId = $profileId
+            ORDER BY SavedAt DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var durSec = reader.GetInt64(3);
+            list.Add(new YouTubeSearchItem(
+                VideoId: reader.GetString(0),
+                Title: reader.GetString(1),
+                Channel: reader.GetString(2),
+                Duration: durSec > 0 ? TimeSpan.FromSeconds(durSec) : null,
+                Url: reader.GetString(4),
+                ThumbnailUrl: reader.IsDBNull(5) ? null : reader.GetString(5)));
+        }
+
+        return list;
+    }
+
+    public HashSet<string> GetSavedYouTubeVideoIds(long profileId)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (profileId <= 0)
+        {
+            return ids;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT VideoId FROM YouTubeSavedVideos WHERE ProfileId = $profileId;";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ids.Add(reader.GetString(0));
+        }
+
+        return ids;
+    }
+
+    public bool IsYouTubeVideoSaved(long profileId, string? videoId)
+    {
+        if (profileId <= 0 || string.IsNullOrWhiteSpace(videoId))
+        {
+            return false;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT 1 FROM YouTubeSavedVideos
+            WHERE ProfileId = $profileId AND VideoId = $videoId
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$videoId", videoId.Trim());
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    public bool ToggleSavedYouTubeVideo(long profileId, YouTubeSearchItem item)
+    {
+        if (profileId <= 0 || string.IsNullOrWhiteSpace(item.VideoId))
+        {
+            return false;
+        }
+
+        var cleanId = item.VideoId.Trim();
+        using var connection = OpenConnection();
+        using (var delCmd = connection.CreateCommand())
+        {
+            delCmd.CommandText = "DELETE FROM YouTubeSavedVideos WHERE ProfileId = $profileId AND VideoId = $videoId;";
+            delCmd.Parameters.AddWithValue("$profileId", profileId);
+            delCmd.Parameters.AddWithValue("$videoId", cleanId);
+            if (delCmd.ExecuteNonQuery() > 0)
+            {
+                return false;
+            }
+        }
+
+        using var insCmd = connection.CreateCommand();
+        insCmd.CommandText = """
+            INSERT INTO YouTubeSavedVideos (ProfileId, VideoId, Title, Channel, DurationSeconds, Url, ThumbnailUrl, SavedAt)
+            VALUES ($profileId, $videoId, $title, $channel, $dur, $url, $thumb, $savedAt)
+            ON CONFLICT(ProfileId, VideoId) DO UPDATE SET
+                Title = excluded.Title,
+                Channel = excluded.Channel,
+                DurationSeconds = excluded.DurationSeconds,
+                Url = excluded.Url,
+                ThumbnailUrl = excluded.ThumbnailUrl,
+                SavedAt = excluded.SavedAt;
+            """;
+        insCmd.Parameters.AddWithValue("$profileId", profileId);
+        insCmd.Parameters.AddWithValue("$videoId", cleanId);
+        insCmd.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(item.Title) ? cleanId : item.Title.Trim());
+        insCmd.Parameters.AddWithValue("$channel", string.IsNullOrWhiteSpace(item.Channel) ? "YouTube" : item.Channel.Trim());
+        insCmd.Parameters.AddWithValue("$dur", item.Duration is { } d ? (long)Math.Max(0, d.TotalSeconds) : 0L);
+        insCmd.Parameters.AddWithValue("$url", string.IsNullOrWhiteSpace(item.Url) ? $"https://www.youtube.com/watch?v={cleanId}" : item.Url.Trim());
+        insCmd.Parameters.AddWithValue("$thumb", (object?)item.ThumbnailUrl ?? DBNull.Value);
+        insCmd.Parameters.AddWithValue("$savedAt", DateTime.UtcNow.ToString("O"));
+        insCmd.ExecuteNonQuery();
+        return true;
+    }
+
+    public List<YouTubeSearchItem> GetYouTubeWatchHistory(long profileId, int limit = 200)
+    {
+        var list = new List<YouTubeSearchItem>();
+        if (profileId <= 0)
+        {
+            return list;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT VideoId, Title, Channel, DurationSeconds, Url, ThumbnailUrl
+            FROM YouTubeWatchHistory
+            WHERE ProfileId = $profileId
+            ORDER BY WatchedAt DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var durSec = reader.GetInt64(3);
+            list.Add(new YouTubeSearchItem(
+                VideoId: reader.GetString(0),
+                Title: reader.GetString(1),
+                Channel: reader.GetString(2),
+                Duration: durSec > 0 ? TimeSpan.FromSeconds(durSec) : null,
+                Url: reader.GetString(4),
+                ThumbnailUrl: reader.IsDBNull(5) ? null : reader.GetString(5)));
+        }
+
+        return list;
+    }
+
+    public void RecordYouTubeWatchHistory(long profileId, YouTubeSearchItem item)
+    {
+        if (profileId <= 0 || string.IsNullOrWhiteSpace(item.VideoId))
+        {
+            return;
+        }
+
+        var cleanId = item.VideoId.Trim();
+        using var connection = OpenConnection();
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = """
+                INSERT INTO YouTubeWatchHistory (ProfileId, VideoId, Title, Channel, DurationSeconds, Url, ThumbnailUrl, WatchedAt)
+                VALUES ($profileId, $videoId, $title, $channel, $dur, $url, $thumb, $watchedAt)
+                ON CONFLICT(ProfileId, VideoId) DO UPDATE SET
+                    Title = excluded.Title,
+                    Channel = excluded.Channel,
+                    DurationSeconds = excluded.DurationSeconds,
+                    Url = excluded.Url,
+                    ThumbnailUrl = COALESCE(excluded.ThumbnailUrl, YouTubeWatchHistory.ThumbnailUrl),
+                    WatchedAt = excluded.WatchedAt;
+                """;
+            cmd.Parameters.AddWithValue("$profileId", profileId);
+            cmd.Parameters.AddWithValue("$videoId", cleanId);
+            cmd.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(item.Title) ? cleanId : item.Title.Trim());
+            cmd.Parameters.AddWithValue("$channel", string.IsNullOrWhiteSpace(item.Channel) ? "YouTube" : item.Channel.Trim());
+            cmd.Parameters.AddWithValue("$dur", item.Duration is { } d ? (long)Math.Max(0, d.TotalSeconds) : 0L);
+            cmd.Parameters.AddWithValue("$url", string.IsNullOrWhiteSpace(item.Url) ? $"https://www.youtube.com/watch?v={cleanId}" : item.Url.Trim());
+            cmd.Parameters.AddWithValue("$thumb", (object?)item.ThumbnailUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$watchedAt", DateTime.UtcNow.ToString("O"));
+            cmd.ExecuteNonQuery();
+        }
+
+        using var pruneCmd = connection.CreateCommand();
+        pruneCmd.CommandText = """
+            DELETE FROM YouTubeWatchHistory
+            WHERE ProfileId = $profileId
+              AND Id NOT IN (
+                  SELECT Id FROM YouTubeWatchHistory
+                  WHERE ProfileId = $profileId
+                  ORDER BY WatchedAt DESC
+                  LIMIT 250
+              );
+            """;
+        pruneCmd.Parameters.AddWithValue("$profileId", profileId);
+        pruneCmd.ExecuteNonQuery();
+    }
+
+    public void RemoveYouTubeHistoryItem(long profileId, string? videoId)
+    {
+        if (profileId <= 0 || string.IsNullOrWhiteSpace(videoId))
+        {
+            return;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM YouTubeWatchHistory WHERE ProfileId = $profileId AND VideoId = $videoId;";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$videoId", videoId.Trim());
+        cmd.ExecuteNonQuery();
+    }
+
+    public void ClearYouTubeWatchHistory(long profileId)
+    {
+        if (profileId <= 0)
+        {
+            return;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM YouTubeWatchHistory WHERE ProfileId = $profileId;";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public (HashSet<string> VideoIds, HashSet<string> Channels) GetHiddenYouTubeFilters(long profileId)
+    {
+        var videoIds = new HashSet<string>(StringComparer.Ordinal);
+        var channels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (profileId <= 0)
+        {
+            return (videoIds, channels);
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT Kind, ItemKey
+            FROM YouTubeHiddenItems
+            WHERE ProfileId = $profileId;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var kind = reader.GetString(0);
+            var key = reader.GetString(1);
+            if (string.Equals(kind, "channel", StringComparison.OrdinalIgnoreCase))
+            {
+                channels.Add(key);
+            }
+            else
+            {
+                videoIds.Add(key);
+            }
+        }
+
+        return (videoIds, channels);
+    }
+
+    public int GetHiddenYouTubeItemCount(long profileId)
+    {
+        if (profileId <= 0)
+        {
+            return 0;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM YouTubeHiddenItems WHERE ProfileId = $profileId;";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    public void HideYouTubeItem(long profileId, string kind, string itemKey, string label)
+    {
+        if (profileId <= 0 || string.IsNullOrWhiteSpace(itemKey))
+        {
+            return;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO YouTubeHiddenItems (ProfileId, Kind, ItemKey, Label, HiddenAt)
+            VALUES ($profileId, $kind, $key, $label, $hiddenAt)
+            ON CONFLICT(ProfileId, Kind, ItemKey) DO UPDATE SET
+                Label = excluded.Label,
+                HiddenAt = excluded.HiddenAt;
+            """;
+        cmd.Parameters.AddWithValue("$profileId", profileId);
+        cmd.Parameters.AddWithValue("$kind", kind.Trim().ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$key", itemKey.Trim());
+        cmd.Parameters.AddWithValue("$label", string.IsNullOrWhiteSpace(label) ? itemKey.Trim() : label.Trim());
+        cmd.Parameters.AddWithValue("$hiddenAt", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public void ClearHiddenYouTubeItems(long profileId)
+    {
+        if (profileId <= 0)
+        {
+            return;
+        }
+
+        using var connection = OpenConnection();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM YouTubeHiddenItems WHERE ProfileId = $profileId;";
+        cmd.Parameters.AddWithValue("$profileId", profileId);
         cmd.ExecuteNonQuery();
     }
 

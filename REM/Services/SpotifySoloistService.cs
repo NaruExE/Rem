@@ -44,6 +44,19 @@ public sealed class SpotifySoloistService : IDisposable
     private readonly ActionLogService _actionLog;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _sendGate = new(1, 1);
+    private readonly object _queueLock = new();
+    private readonly Dictionary<string, string> _knownCoverUrls = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> _knownDurationsMs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<SpotifyTrackItem> _manualUserQueue = [];
+    private List<SpotifyTrackItem> _activeQueueTracks = [];
+    private List<int> _activeShuffleOrder = [];
+    private int _activeQueueIndex = -1;
+    private string? _currentManualTrackUri;
+    private string? _pendingTargetUri;
+    private DateTimeOffset _pendingTargetUntilUtc = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastUserPauseUtc = DateTimeOffset.MinValue;
+    private CancellationTokenSource? _autoAdvanceCts;
+    private int _autoAdvanceInFlight;
     private AudioDeviceChangeWatcher? _deviceWatcher;
     private int _deviceRestartInFlight;
 
@@ -487,6 +500,18 @@ public sealed class SpotifySoloistService : IDisposable
     {
         StopDeviceWatcher();
         CancelAndDisposeWsCts();
+        CancelAutoAdvanceTimer();
+        lock (_queueLock)
+        {
+            _activeQueueTracks.Clear();
+            _activeShuffleOrder.Clear();
+            _activeQueueIndex = -1;
+            _manualUserQueue.Clear();
+            _currentManualTrackUri = null;
+            _pendingTargetUri = null;
+            _pendingTargetUntilUtc = DateTimeOffset.MinValue;
+            _knownDurationsMs.Clear();
+        }
         _isConnected = false;
         _isAuthenticated = false;
         _isDeviceActive = false;
@@ -611,6 +636,377 @@ public sealed class SpotifySoloistService : IDisposable
         });
     }
 
+    public void RememberTrackMetadata(IEnumerable<SpotifyTrackItem> tracks)
+    {
+        lock (_queueLock)
+        {
+            foreach (var tr in tracks)
+            {
+                if (string.IsNullOrWhiteSpace(tr.Uri))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(tr.AlbumCoverUrl))
+                {
+                    if (_knownCoverUrls.Count >= 300)
+                    {
+                        _knownCoverUrls.Clear();
+                    }
+
+                    _knownCoverUrls[tr.Uri] = tr.AlbumCoverUrl!;
+                }
+
+                if (tr.DurationMs > 0)
+                {
+                    if (_knownDurationsMs.Count >= 300)
+                    {
+                        _knownDurationsMs.Clear();
+                    }
+
+                    _knownDurationsMs[tr.Uri] = tr.DurationMs;
+                }
+            }
+        }
+    }
+
+    public async Task<bool> PlayTrackListAsync(
+        IReadOnlyList<SpotifyTrackItem> tracks,
+        int startIndex,
+        CancellationToken cancellationToken = default)
+    {
+        if (tracks.Count == 0)
+        {
+            return false;
+        }
+
+        RememberTrackMetadata(tracks);
+        var clampedStart = Math.Clamp(startIndex, 0, tracks.Count - 1);
+        var selectedTrack = tracks[clampedStart];
+
+        if (!IsDaemonRunning && HasApiKey)
+        {
+            var (started, _) = await EnsureDaemonRunningAsync(cancellationToken).ConfigureAwait(false);
+            if (!started)
+            {
+                return false;
+            }
+
+            await Task.Delay(450, cancellationToken).ConfigureAwait(false);
+        }
+
+        CancelAutoAdvanceTimer();
+        var isShuffled = _lastStatus?.ShuffleContext == true;
+        SetupActiveListLocked(tracks, clampedStart, isShuffled, selectedTrack.Uri);
+
+        var ok = await PlayAsync(selectedTrack.Uri, cancellationToken).ConfigureAwait(false);
+        if (!ok)
+        {
+            lock (_queueLock)
+            {
+                _activeQueueTracks.Clear();
+                _activeShuffleOrder.Clear();
+                _activeQueueIndex = -1;
+                _manualUserQueue.Clear();
+                _currentManualTrackUri = null;
+                _pendingTargetUri = null;
+            }
+
+            return false;
+        }
+
+        PublishLocalQueueSnapshot();
+        ScheduleAutoAdvanceTimer();
+        return true;
+    }
+
+    private bool HasLocalActiveListLocked =>
+        _activeShuffleOrder.Count > 0 && _activeQueueTracks.Count > 0 && _activeQueueIndex >= 0;
+
+    private void SetupActiveListLocked(
+        IReadOnlyList<SpotifyTrackItem> tracks,
+        int startIndex,
+        bool shuffled,
+        string selectedUri)
+    {
+        lock (_queueLock)
+        {
+            _activeQueueTracks = tracks.Where(t => !string.IsNullOrWhiteSpace(t.Uri)).ToList();
+            _manualUserQueue.Clear();
+            _currentManualTrackUri = null;
+            if (_activeQueueTracks.Count == 0)
+            {
+                _activeShuffleOrder.Clear();
+                _activeQueueIndex = -1;
+                _pendingTargetUri = null;
+                return;
+            }
+
+            var targetUri = tracks[Math.Clamp(startIndex, 0, tracks.Count - 1)].Uri;
+            var actualStart = _activeQueueTracks.FindIndex(t => string.Equals(t.Uri, targetUri, StringComparison.Ordinal));
+            if (actualStart < 0) actualStart = 0;
+
+            _activeShuffleOrder = Enumerable.Range(0, _activeQueueTracks.Count).ToList();
+            if (shuffled && _activeQueueTracks.Count > 2)
+            {
+                // Keep chosen startIndex first, shuffle remaining indices with Fisher-Yates.
+                _activeShuffleOrder[0] = actualStart;
+                var rest = Enumerable.Range(0, _activeQueueTracks.Count).Where(i => i != actualStart).ToList();
+                for (var i = rest.Count - 1; i > 0; i--)
+                {
+                    var j = Random.Shared.Next(i + 1);
+                    (rest[i], rest[j]) = (rest[j], rest[i]);
+                }
+
+                for (var i = 0; i < rest.Count; i++)
+                {
+                    _activeShuffleOrder[i + 1] = rest[i];
+                }
+
+                _activeQueueIndex = 0;
+            }
+            else
+            {
+                _activeQueueIndex = actualStart;
+            }
+
+            _pendingTargetUri = selectedUri;
+            _pendingTargetUntilUtc = DateTimeOffset.UtcNow.AddSeconds(3);
+        }
+    }
+
+    private int NextExpectedOrderIndexLocked()
+    {
+        if (_activeShuffleOrder.Count == 0 || _activeQueueIndex < 0)
+        {
+            return -1;
+        }
+
+        var nextPos = _activeQueueIndex + 1;
+        if (nextPos >= _activeShuffleOrder.Count)
+        {
+            return _lastStatus?.RepeatContext == true ? 0 : -1;
+        }
+
+        return nextPos;
+    }
+
+    private bool HasNextInActiveListLocked() =>
+        _manualUserQueue.Count > 0 || NextExpectedOrderIndexLocked() >= 0;
+
+    private bool HasNextInActiveList()
+    {
+        lock (_queueLock)
+        {
+            return HasNextInActiveListLocked();
+        }
+    }
+
+    private string? PopNextTargetUriLocked()
+    {
+        if (_manualUserQueue.Count > 0)
+        {
+            var nextManual = _manualUserQueue[0];
+            _manualUserQueue.RemoveAt(0);
+            _currentManualTrackUri = nextManual.Uri;
+            return nextManual.Uri;
+        }
+
+        var nextPos = NextExpectedOrderIndexLocked();
+        if (nextPos >= 0)
+        {
+            _activeQueueIndex = nextPos;
+            _currentManualTrackUri = null;
+            return _activeQueueTracks[_activeShuffleOrder[nextPos]].Uri;
+        }
+
+        return null;
+    }
+
+    private List<SpotifyQueueEntry> BuildLocalQueueEntriesLocked(int limit = 25)
+    {
+        var entries = new List<SpotifyQueueEntry>();
+        if (!HasLocalActiveListLocked || limit <= 0)
+        {
+            return entries;
+        }
+
+        foreach (var manual in _manualUserQueue)
+        {
+            if (entries.Count >= limit)
+            {
+                return entries;
+            }
+
+            entries.Add(new SpotifyQueueEntry(manual.Uri, "queue", manual));
+        }
+
+        var count = _activeShuffleOrder.Count;
+        for (var i = _activeQueueIndex + 1; i < count && entries.Count < limit; i++)
+        {
+            var t = _activeQueueTracks[_activeShuffleOrder[i]];
+            entries.Add(new SpotifyQueueEntry(t.Uri, "context", t));
+        }
+
+        if (_lastStatus?.RepeatContext == true)
+        {
+            for (var i = 0; i <= _activeQueueIndex && i < count && entries.Count < limit; i++)
+            {
+                var t = _activeQueueTracks[_activeShuffleOrder[i]];
+                entries.Add(new SpotifyQueueEntry(t.Uri, "context", t));
+            }
+        }
+
+        return entries;
+    }
+
+    private void PublishLocalQueueSnapshot(int limit = 25)
+    {
+        List<SpotifyQueueEntry>? entries = null;
+        lock (_queueLock)
+        {
+            if (HasLocalActiveListLocked)
+            {
+                entries = BuildLocalQueueEntriesLocked(limit);
+            }
+        }
+
+        if (entries is not null)
+        {
+            QueueUpdated?.Invoke(this, entries);
+        }
+    }
+
+    private long LookupKnownDurationMsLocked(string? uri) =>
+        !string.IsNullOrWhiteSpace(uri) && _knownDurationsMs.TryGetValue(uri, out var d) ? d : 0;
+
+    private void CancelAutoAdvanceTimer()
+    {
+        var current = Interlocked.Exchange(ref _autoAdvanceCts, null);
+        if (current is not null)
+        {
+            try { current.Cancel(); } catch (ObjectDisposedException) { }
+            finally { current.Dispose(); }
+        }
+    }
+
+    private void ScheduleAutoAdvanceTimer()
+    {
+        CancelAutoAdvanceTimer();
+        var st = _lastStatus;
+        if (_disposed || !IsDaemonRunning || !_isClockRunning ||
+            st is not { Stopped: false, Paused: false, RepeatTrack: false, Track: not null })
+        {
+            return;
+        }
+
+        long durationMs;
+        string expectedUri = st.Track.Uri;
+        lock (_queueLock)
+        {
+            if (!HasLocalActiveListLocked || !HasNextInActiveListLocked())
+            {
+                return;
+            }
+
+            durationMs = st.Track.DurationMs > 0
+                ? st.Track.DurationMs
+                : LookupKnownDurationMsLocked(expectedUri);
+        }
+
+        if (durationMs <= 2000 || string.IsNullOrWhiteSpace(expectedUri))
+        {
+            return;
+        }
+
+        var remainingMs = durationMs - GetEstimatedPositionMs();
+        var delayMs = (int)Math.Clamp(remainingMs - 100, 150, 3_600_000);
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _autoAdvanceCts, cts);
+        if (prev is not null)
+        {
+            try { prev.Cancel(); } catch { }
+            prev.Dispose();
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delayMs, cts.Token).ConfigureAwait(false);
+                if (cts.IsCancellationRequested || _disposed || !_isClockRunning)
+                {
+                    return;
+                }
+
+                var cur = _lastStatus;
+                if (cur is not { Stopped: false, Paused: false, RepeatTrack: false, Track: not null } ||
+                    !string.Equals(cur.Track.Uri, expectedUri, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                if (GetEstimatedPositionMs() < durationMs - 1500)
+                {
+                    return;
+                }
+
+                await AdvanceToNextInActiveListAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+        });
+    }
+
+    private async Task<bool> AdvanceToNextInActiveListAsync(CancellationToken cancellationToken)
+    {
+        if (_disposed || Interlocked.CompareExchange(ref _autoAdvanceInFlight, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string? targetUri = null;
+            lock (_queueLock)
+            {
+                if (HasLocalActiveListLocked)
+                {
+                    targetUri = PopNextTargetUriLocked();
+                }
+
+                if (!string.IsNullOrWhiteSpace(targetUri))
+                {
+                    _pendingTargetUri = targetUri;
+                    _pendingTargetUntilUtc = DateTimeOffset.UtcNow.AddSeconds(4);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(targetUri))
+            {
+                return false;
+            }
+
+            CancelAutoAdvanceTimer();
+            var ok = await PlayAsync(targetUri, cancellationToken).ConfigureAwait(false);
+            if (ok)
+            {
+                PublishLocalQueueSnapshot();
+                ScheduleAutoAdvanceTimer();
+            }
+
+            return ok;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _autoAdvanceInFlight, 0);
+        }
+    }
+
     public async Task<bool> PlayAsync(string? uri = null, CancellationToken cancellationToken = default)
     {
         if (!_isDeviceActive)
@@ -638,8 +1034,12 @@ public sealed class SpotifySoloistService : IDisposable
         return ok;
     }
 
-    public Task<bool> PauseAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(new { type = "command", command = "pause" }, cancellationToken);
+    public Task<bool> PauseAsync(CancellationToken cancellationToken = default)
+    {
+        _lastUserPauseUtc = DateTimeOffset.UtcNow;
+        CancelAutoAdvanceTimer();
+        return SendCommandAsync(new { type = "command", command = "pause" }, cancellationToken);
+    }
 
     public Task<bool> PlayPauseAsync(CancellationToken cancellationToken = default)
     {
@@ -647,11 +1047,104 @@ public sealed class SpotifySoloistService : IDisposable
         return isPlaying ? PauseAsync(cancellationToken) : PlayAsync(uri: null, cancellationToken);
     }
 
-    public Task<bool> NextAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(new { type = "command", command = "skip_next" }, cancellationToken);
+    public async Task<bool> NextAsync(CancellationToken cancellationToken = default)
+    {
+        CancelAutoAdvanceTimer();
+        string? targetUri = null;
+        var hasLocal = false;
 
-    public Task<bool> PrevAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(new { type = "command", command = "skip_prev" }, cancellationToken);
+        lock (_queueLock)
+        {
+            hasLocal = HasLocalActiveListLocked;
+            if (hasLocal)
+            {
+                targetUri = PopNextTargetUriLocked();
+                if (!string.IsNullOrWhiteSpace(targetUri))
+                {
+                    _pendingTargetUri = targetUri;
+                    _pendingTargetUntilUtc = DateTimeOffset.UtcNow.AddSeconds(4);
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetUri))
+        {
+            var ok = await PlayAsync(targetUri, cancellationToken).ConfigureAwait(false);
+            if (ok)
+            {
+                PublishLocalQueueSnapshot();
+                ScheduleAutoAdvanceTimer();
+            }
+
+            return ok;
+        }
+
+        if (hasLocal)
+        {
+            PublishLocalQueueSnapshot();
+            return false;
+        }
+
+        return await SendCommandAsync(new { type = "command", command = "skip_next" }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> PrevAsync(CancellationToken cancellationToken = default)
+    {
+        CancelAutoAdvanceTimer();
+        string? targetUri = null;
+        var hasLocal = false;
+
+        lock (_queueLock)
+        {
+            hasLocal = HasLocalActiveListLocked;
+        }
+
+        if (hasLocal)
+        {
+            if (GetEstimatedPositionMs() <= 4000)
+            {
+                lock (_queueLock)
+                {
+                    if (HasLocalActiveListLocked)
+                    {
+                        if (_currentManualTrackUri is not null)
+                        {
+                            // Return from the manually queued track back to the parked playlist track.
+                            _currentManualTrackUri = null;
+                            targetUri = _activeQueueTracks[_activeShuffleOrder[_activeQueueIndex]].Uri;
+                        }
+                        else if (_activeQueueIndex > 0)
+                        {
+                            _activeQueueIndex--;
+                            targetUri = _activeQueueTracks[_activeShuffleOrder[_activeQueueIndex]].Uri;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(targetUri))
+                        {
+                            _pendingTargetUri = targetUri;
+                            _pendingTargetUntilUtc = DateTimeOffset.UtcNow.AddSeconds(4);
+                        }
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetUri))
+            {
+                var ok = await PlayAsync(targetUri, cancellationToken).ConfigureAwait(false);
+                if (ok)
+                {
+                    PublishLocalQueueSnapshot();
+                    ScheduleAutoAdvanceTimer();
+                }
+
+                return ok;
+            }
+
+            return await SeekAsync(0, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await SendCommandAsync(new { type = "command", command = "skip_prev" }, cancellationToken).ConfigureAwait(false);
+    }
 
     public Task<bool> SeekAsync(long positionMs, CancellationToken cancellationToken = default)
     {
@@ -663,6 +1156,7 @@ public sealed class SpotifySoloistService : IDisposable
             _lastStatus = st with { Track = st.Track with { PositionMs = clamped } };
         }
 
+        ScheduleAutoAdvanceTimer();
         return SendCommandAsync(new { type = "command", command = "seek", position_ms = clamped }, cancellationToken);
     }
 
@@ -678,8 +1172,134 @@ public sealed class SpotifySoloistService : IDisposable
     public Task<bool> SetRepeatTrackAsync(bool enabled, CancellationToken cancellationToken = default) =>
         SendCommandAsync(new { type = "command", command = "set_repeat_track", enabled }, cancellationToken);
 
-    public Task<bool> AddToQueueAsync(string trackUri, CancellationToken cancellationToken = default) =>
-        SendCommandAsync(new { type = "command", command = "add_to_queue", uri = trackUri }, cancellationToken);
+    public Task<bool> AddToQueueAsync(string trackUri, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(trackUri))
+        {
+            return Task.FromResult(false);
+        }
+
+        var trackId = trackUri.Split(':').LastOrDefault() ?? string.Empty;
+        return AddToQueueAsync(
+            new SpotifyTrackItem(trackId, trackUri, trackId, string.Empty, string.Empty, null, 0),
+            cancellationToken);
+    }
+
+    public async Task<bool> AddToQueueAsync(SpotifyTrackItem track, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(track.Uri))
+        {
+            return false;
+        }
+
+        RememberTrackMetadata([track]);
+
+        var handledLocally = false;
+        lock (_queueLock)
+        {
+            if (HasLocalActiveListLocked)
+            {
+                if (_manualUserQueue.Count < 50)
+                {
+                    _manualUserQueue.Add(track);
+                }
+
+                handledLocally = true;
+            }
+        }
+
+        if (handledLocally)
+        {
+            PublishLocalQueueSnapshot();
+            ScheduleAutoAdvanceTimer();
+            return true;
+        }
+
+        return await SendCommandAsync(new { type = "command", command = "add_to_queue", uri = track.Uri }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> PlayFromQueueAsync(SpotifyQueueEntry entry, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Uri))
+        {
+            return false;
+        }
+
+        string? matchedUri = null;
+        var hasLocal = false;
+
+        lock (_queueLock)
+        {
+            hasLocal = HasLocalActiveListLocked;
+            if (hasLocal)
+            {
+                if (string.Equals(entry.Provider, "queue", StringComparison.OrdinalIgnoreCase))
+                {
+                    var qIdx = _manualUserQueue.FindIndex(t => string.Equals(t.Uri, entry.Uri, StringComparison.Ordinal));
+                    if (qIdx >= 0)
+                    {
+                        var target = _manualUserQueue[qIdx];
+                        _manualUserQueue.RemoveRange(0, qIdx + 1);
+                        _currentManualTrackUri = target.Uri;
+                        matchedUri = target.Uri;
+                    }
+                }
+                else
+                {
+                    var count = _activeShuffleOrder.Count;
+                    var foundOrderIdx = -1;
+                    for (var i = _activeQueueIndex + 1; i < count; i++)
+                    {
+                        if (string.Equals(_activeQueueTracks[_activeShuffleOrder[i]].Uri, entry.Uri, StringComparison.Ordinal))
+                        {
+                            foundOrderIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (foundOrderIdx < 0)
+                    {
+                        for (var i = 0; i <= _activeQueueIndex && i < count; i++)
+                        {
+                            if (string.Equals(_activeQueueTracks[_activeShuffleOrder[i]].Uri, entry.Uri, StringComparison.Ordinal))
+                            {
+                                foundOrderIdx = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (foundOrderIdx >= 0)
+                    {
+                        _activeQueueIndex = foundOrderIdx;
+                        _currentManualTrackUri = null;
+                        matchedUri = entry.Uri;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(matchedUri))
+                {
+                    _pendingTargetUri = matchedUri;
+                    _pendingTargetUntilUtc = DateTimeOffset.UtcNow.AddSeconds(4);
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(matchedUri))
+        {
+            CancelAutoAdvanceTimer();
+            var ok = await PlayAsync(matchedUri, cancellationToken).ConfigureAwait(false);
+            if (ok)
+            {
+                PublishLocalQueueSnapshot();
+                ScheduleAutoAdvanceTimer();
+            }
+
+            return ok;
+        }
+
+        return await PlayAsync(entry.Uri, cancellationToken).ConfigureAwait(false);
+    }
 
     public Task<bool> ActivateAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(new { type = "command", command = "activate" }, cancellationToken);
@@ -687,8 +1307,25 @@ public sealed class SpotifySoloistService : IDisposable
     public Task<bool> RequestStateAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(new { type = "command", command = "get_state" }, cancellationToken);
 
-    public Task<bool> RequestQueueAsync(int limit = 25, CancellationToken cancellationToken = default) =>
-        SendCommandAsync(new { type = "command", command = "get_queue", limit }, cancellationToken);
+    public Task<bool> RequestQueueAsync(int limit = 25, CancellationToken cancellationToken = default)
+    {
+        List<SpotifyQueueEntry>? local = null;
+        lock (_queueLock)
+        {
+            if (HasLocalActiveListLocked)
+            {
+                local = BuildLocalQueueEntriesLocked(limit);
+            }
+        }
+
+        if (local is not null)
+        {
+            QueueUpdated?.Invoke(this, local);
+            return Task.FromResult(true);
+        }
+
+        return SendCommandAsync(new { type = "command", command = "get_queue", limit }, cancellationToken);
+    }
 
     private async Task<bool> SendCommandAsync(object payload, CancellationToken cancellationToken)
     {
@@ -752,7 +1389,10 @@ public sealed class SpotifySoloistService : IDisposable
 
                 await SendCommandAsync(new { type = "command", command = "get_auth_state" }, ct).ConfigureAwait(false);
                 await SendCommandAsync(new { type = "command", command = "get_state" }, ct).ConfigureAwait(false);
-                await SendCommandAsync(new { type = "command", command = "get_queue", limit = 25 }, ct).ConfigureAwait(false);
+                if (QueueUpdated is not null)
+                {
+                    await SendCommandAsync(new { type = "command", command = "get_queue", limit = 25 }, ct).ConfigureAwait(false);
+                }
 
                 var buffer = new byte[32 * 1024];
                 using var ms = new MemoryStream();
@@ -857,7 +1497,9 @@ public sealed class SpotifySoloistService : IDisposable
                     }
 
                     EnsureStatusInitialized();
-                    var prevUri = _lastStatus!.Track?.Uri;
+                    var previousTrack = _lastStatus!.Track;
+                    var previousPosMs = GetEstimatedPositionMs();
+                    var prevUri = previousTrack?.Uri;
                     track = MergeTrackMetadata(_lastStatus.Track, track);
                     _isAuthenticated = true;
 
@@ -899,13 +1541,20 @@ public sealed class SpotifySoloistService : IDisposable
                         Paused = track is null ? _lastStatus.Paused : !isPlaying,
                         HasAuthoritativePosition = hasAuthPos
                     };
+                    SyncActiveListOnTrackChanged(track?.Uri, previousTrack, previousPosMs);
                     StatusChanged?.Invoke(this, _lastStatus);
-                    _ = RequestQueueAsync(25);
+                    if (QueueUpdated is not null)
+                    {
+                        _ = RequestQueueAsync(25);
+                    }
                     break;
                 }
                 case "playback_changed":
                 {
                     EnsureStatusInitialized();
+                    var wasPlaying = !_lastStatus!.Paused && !_lastStatus.Stopped;
+                    var prevTrack = _lastStatus.Track;
+                    var prevPosMs = GetEstimatedPositionMs();
                     _isAuthenticated = true;
                     var statusText = GetString(root, "status")?.ToLowerInvariant();
                     var stopped = statusText == "stopped" || statusText == "idle" || (GetBool(root, "stopped") ?? false);
@@ -921,7 +1570,7 @@ public sealed class SpotifySoloistService : IDisposable
                         paused = !playingFlag;
                     }
 
-                    var curTrack = _lastStatus!.Track;
+                    var curTrack = _lastStatus.Track;
                     var prevUri = curTrack?.Uri;
                     if ((TryGetObject(root, "item", out var itemObj) || TryGetObject(root, "track", out itemObj)) &&
                         ParseSoloistEntity(itemObj) is { } nextTrack)
@@ -968,6 +1617,42 @@ public sealed class SpotifySoloistService : IDisposable
                         HasAuthoritativePosition = hasAuthPos
                     };
                     StatusChanged?.Invoke(this, _lastStatus);
+
+                    long prevDur = 0;
+                    if (prevTrack is not null)
+                    {
+                        if (prevTrack.DurationMs > 0)
+                        {
+                            prevDur = prevTrack.DurationMs;
+                        }
+                        else
+                        {
+                            lock (_queueLock)
+                            {
+                                prevDur = LookupKnownDurationMsLocked(prevTrack.Uri);
+                            }
+                        }
+                    }
+
+                    var endedNaturally =
+                        (stopped || (paused && prevDur > 3000 && prevPosMs >= prevDur - 1800)) &&
+                        wasPlaying &&
+                        _lastStatus.RepeatTrack != true &&
+                        (DateTimeOffset.UtcNow - _lastUserPauseUtc).TotalMilliseconds > 1500;
+
+                    if (endedNaturally && HasNextInActiveList())
+                    {
+                        CancelAutoAdvanceTimer();
+                        _ = AdvanceToNextInActiveListAsync(CancellationToken.None);
+                    }
+                    else if (!stopped && !paused && curTrack is not null)
+                    {
+                        ScheduleAutoAdvanceTimer();
+                    }
+                    else
+                    {
+                        CancelAutoAdvanceTimer();
+                    }
                     break;
                 }
                 case "position_sync":
@@ -1008,6 +1693,14 @@ public sealed class SpotifySoloistService : IDisposable
                         HasAuthoritativePosition = true
                     };
                     StatusChanged?.Invoke(this, _lastStatus);
+                    if (nowPlaying)
+                    {
+                        ScheduleAutoAdvanceTimer();
+                    }
+                    else
+                    {
+                        CancelAutoAdvanceTimer();
+                    }
                     break;
                 }
                 case "volume_changed":
@@ -1027,9 +1720,12 @@ public sealed class SpotifySoloistService : IDisposable
                 case "options_changed":
                 {
                     EnsureStatusInitialized();
-                    var shuffle = _lastStatus!.ShuffleContext;
-                    var repeatCtx = _lastStatus.RepeatContext;
-                    var repeatTrk = _lastStatus.RepeatTrack;
+                    var prevShuffle = _lastStatus!.ShuffleContext;
+                    var prevRepeatCtx = _lastStatus.RepeatContext;
+                    var prevRepeatTrk = _lastStatus.RepeatTrack;
+                    var shuffle = prevShuffle;
+                    var repeatCtx = prevRepeatCtx;
+                    var repeatTrk = prevRepeatTrk;
                     ApplyOptionsElement(root, ref shuffle, ref repeatCtx, ref repeatTrk);
 
                     _lastStatus = _lastStatus with
@@ -1040,6 +1736,19 @@ public sealed class SpotifySoloistService : IDisposable
                         Track = StampCurrentTrackPosition(_lastStatus.Track),
                         HasAuthoritativePosition = false
                     };
+                    if (prevShuffle != shuffle)
+                    {
+                        RebuildActiveListShuffle(shuffle, _lastStatus.Track?.Uri);
+                    }
+                    else if (prevRepeatCtx != repeatCtx || prevRepeatTrk != repeatTrk)
+                    {
+                        if (prevRepeatCtx != repeatCtx)
+                        {
+                            PublishLocalQueueSnapshot();
+                        }
+
+                        ScheduleAutoAdvanceTimer();
+                    }
                     StatusChanged?.Invoke(this, _lastStatus);
                     break;
                 }
@@ -1081,13 +1790,29 @@ public sealed class SpotifySoloistService : IDisposable
                         HasAuthoritativePosition = false
                     };
                     StatusChanged?.Invoke(this, _lastStatus);
-                    _ = RequestQueueAsync(25);
+                    if (QueueUpdated is not null)
+                    {
+                        _ = RequestQueueAsync(25);
+                    }
                     break;
                 }
                 case "queue_changed":
                 {
-                    var entries = ParseQueuePayload(root);
-                    QueueUpdated?.Invoke(this, entries);
+                    var hasLocal = false;
+                    lock (_queueLock)
+                    {
+                        hasLocal = HasLocalActiveListLocked;
+                    }
+
+                    if (hasLocal)
+                    {
+                        PublishLocalQueueSnapshot();
+                    }
+                    else
+                    {
+                        var entries = ParseQueuePayload(root);
+                        QueueUpdated?.Invoke(this, entries);
+                    }
                     break;
                 }
                 case "command_result":
@@ -1203,7 +1928,183 @@ public sealed class SpotifySoloistService : IDisposable
 
         AuthStateChanged?.Invoke(this, (_isAuthenticated, _authenticatedUser));
         StatusChanged?.Invoke(this, _lastStatus);
-        _ = RequestQueueAsync(25);
+        if (!stopped && !paused && track is not null)
+        {
+            ScheduleAutoAdvanceTimer();
+        }
+        else
+        {
+            CancelAutoAdvanceTimer();
+        }
+
+        if (QueueUpdated is not null)
+        {
+            _ = RequestQueueAsync(25);
+        }
+    }
+
+    private void SyncActiveListOnTrackChanged(string? newUri, GoLibrespotTrack? previousTrack, long previousPosMs)
+    {
+        if (string.IsNullOrWhiteSpace(newUri))
+        {
+            CancelAutoAdvanceTimer();
+            return;
+        }
+
+        var shouldSchedule = false;
+        var shouldCancel = false;
+        var shouldPublishQueue = false;
+        var overrideWithNext = false;
+
+        lock (_queueLock)
+        {
+            if (_activeShuffleOrder.Count == 0 || _activeQueueTracks.Count == 0)
+            {
+                return;
+            }
+
+            if (_pendingTargetUri is not null && DateTimeOffset.UtcNow <= _pendingTargetUntilUtc)
+            {
+                if (string.Equals(newUri, _pendingTargetUri, StringComparison.Ordinal))
+                {
+                    _pendingTargetUri = null;
+                    shouldSchedule = true;
+                }
+                else
+                {
+                    // Ignore stale track_changed notifications from prior tracks during rapid skips.
+                    return;
+                }
+            }
+            else if (_currentManualTrackUri is not null &&
+                     string.Equals(_currentManualTrackUri, newUri, StringComparison.Ordinal))
+            {
+                // Duplicate track_changed metadata refresh while our queued track is still playing.
+                shouldSchedule = true;
+            }
+            else if (_manualUserQueue.Count > 0 &&
+                     string.Equals(_manualUserQueue[0].Uri, newUri, StringComparison.Ordinal))
+            {
+                // User-queued track started naturally; mark it active without moving playlist index.
+                _manualUserQueue.RemoveAt(0);
+                _currentManualTrackUri = newUri;
+                shouldSchedule = true;
+                shouldPublishQueue = true;
+            }
+            else
+            {
+                var currentOrderTrack = (_activeQueueIndex >= 0 && _activeQueueIndex < _activeShuffleOrder.Count)
+                    ? _activeQueueTracks[_activeShuffleOrder[_activeQueueIndex]].Uri
+                    : null;
+                if (_currentManualTrackUri is null && string.Equals(currentOrderTrack, newUri, StringComparison.Ordinal))
+                {
+                    shouldSchedule = true;
+                }
+                else
+                {
+                    var foundOrderIdx = -1;
+                    for (var i = 0; i < _activeShuffleOrder.Count; i++)
+                    {
+                        if (string.Equals(_activeQueueTracks[_activeShuffleOrder[i]].Uri, newUri, StringComparison.Ordinal))
+                        {
+                            foundOrderIdx = i;
+                            break;
+                        }
+                    }
+
+                    var prevDur = previousTrack is not null
+                        ? (previousTrack.DurationMs > 0 ? previousTrack.DurationMs : LookupKnownDurationMsLocked(previousTrack.Uri))
+                        : 0;
+                    var endedNaturally = prevDur > 3000 && previousPosMs >= prevDur - 6000 && _lastStatus?.RepeatTrack != true;
+                    var hasNext = HasNextInActiveListLocked();
+
+                    if (endedNaturally && hasNext)
+                    {
+                        // Spotify Connect auto-started an Autoplay/wrong track at song end; enforce our queue/list.
+                        overrideWithNext = true;
+                    }
+                    else if (_currentManualTrackUri is null && foundOrderIdx >= 0)
+                    {
+                        _activeQueueIndex = foundOrderIdx;
+                        shouldSchedule = true;
+                        shouldPublishQueue = true;
+                    }
+                    else
+                    {
+                        // External playback switched away mid-track; yield cleanly.
+                        _activeQueueTracks.Clear();
+                        _activeShuffleOrder.Clear();
+                        _activeQueueIndex = -1;
+                        _manualUserQueue.Clear();
+                        _currentManualTrackUri = null;
+                        _pendingTargetUri = null;
+                        shouldCancel = true;
+                    }
+                }
+            }
+        }
+
+        if (shouldPublishQueue)
+        {
+            PublishLocalQueueSnapshot();
+        }
+
+        if (overrideWithNext)
+        {
+            CancelAutoAdvanceTimer();
+            _ = AdvanceToNextInActiveListAsync(CancellationToken.None);
+        }
+        else if (shouldCancel)
+        {
+            CancelAutoAdvanceTimer();
+        }
+        else if (shouldSchedule)
+        {
+            ScheduleAutoAdvanceTimer();
+        }
+    }
+
+    private void RebuildActiveListShuffle(bool shuffled, string? currentTrackUri)
+    {
+        lock (_queueLock)
+        {
+            if (_activeQueueTracks.Count == 0)
+            {
+                return;
+            }
+
+            var effectiveUri = _currentManualTrackUri is null ? currentTrackUri : null;
+            var anchorIdx = !string.IsNullOrWhiteSpace(effectiveUri)
+                ? _activeQueueTracks.FindIndex(t => string.Equals(t.Uri, effectiveUri, StringComparison.Ordinal))
+                : (_activeQueueIndex >= 0 && _activeQueueIndex < _activeShuffleOrder.Count ? _activeShuffleOrder[_activeQueueIndex] : 0);
+            if (anchorIdx < 0) anchorIdx = 0;
+
+            _activeShuffleOrder = Enumerable.Range(0, _activeQueueTracks.Count).ToList();
+            if (shuffled && _activeQueueTracks.Count > 2)
+            {
+                _activeShuffleOrder[0] = anchorIdx;
+                var rest = Enumerable.Range(0, _activeQueueTracks.Count).Where(i => i != anchorIdx).ToList();
+                for (var i = rest.Count - 1; i > 0; i--)
+                {
+                    var j = Random.Shared.Next(i + 1);
+                    (rest[i], rest[j]) = (rest[j], rest[i]);
+                }
+
+                for (var i = 0; i < rest.Count; i++)
+                {
+                    _activeShuffleOrder[i + 1] = rest[i];
+                }
+
+                _activeQueueIndex = 0;
+            }
+            else
+            {
+                _activeQueueIndex = anchorIdx;
+            }
+        }
+
+        PublishLocalQueueSnapshot();
+        ScheduleAutoAdvanceTimer();
     }
 
     public long GetEstimatedPositionMs()
@@ -1314,16 +2215,39 @@ public sealed class SpotifySoloistService : IDisposable
         }
     }
 
-    private static GoLibrespotTrack? MergeTrackMetadata(GoLibrespotTrack? previous, GoLibrespotTrack? next)
+    private GoLibrespotTrack? MergeTrackMetadata(GoLibrespotTrack? previous, GoLibrespotTrack? next)
     {
         if (next is null)
         {
             return null;
         }
 
+        string? knownCover = null;
+        long knownDur = 0;
+        if (!string.IsNullOrWhiteSpace(next.Uri) &&
+            (string.IsNullOrWhiteSpace(next.AlbumCoverUrl) || next.DurationMs <= 0))
+        {
+            lock (_queueLock)
+            {
+                if (string.IsNullOrWhiteSpace(next.AlbumCoverUrl))
+                {
+                    _knownCoverUrls.TryGetValue(next.Uri, out knownCover);
+                }
+
+                if (next.DurationMs <= 0)
+                {
+                    _knownDurationsMs.TryGetValue(next.Uri, out knownDur);
+                }
+            }
+        }
+
         if (previous is null || !string.Equals(previous.Uri, next.Uri, StringComparison.Ordinal))
         {
-            return next;
+            return next with
+            {
+                AlbumCoverUrl = !string.IsNullOrWhiteSpace(next.AlbumCoverUrl) ? next.AlbumCoverUrl : knownCover,
+                DurationMs = next.DurationMs > 0 ? next.DurationMs : knownDur
+            };
         }
 
         return next with
@@ -1331,8 +2255,10 @@ public sealed class SpotifySoloistService : IDisposable
             Name = string.IsNullOrWhiteSpace(next.Name) || next.Name == "Unknown Track" ? previous.Name : next.Name,
             ArtistNames = next.ArtistNames.Count > 0 ? next.ArtistNames : previous.ArtistNames,
             AlbumName = string.IsNullOrWhiteSpace(next.AlbumName) ? previous.AlbumName : next.AlbumName,
-            AlbumCoverUrl = string.IsNullOrWhiteSpace(next.AlbumCoverUrl) ? previous.AlbumCoverUrl : next.AlbumCoverUrl,
-            DurationMs = next.DurationMs > 0 ? next.DurationMs : previous.DurationMs,
+            AlbumCoverUrl = !string.IsNullOrWhiteSpace(next.AlbumCoverUrl)
+                ? next.AlbumCoverUrl
+                : (!string.IsNullOrWhiteSpace(previous.AlbumCoverUrl) ? previous.AlbumCoverUrl : knownCover),
+            DurationMs = next.DurationMs > 0 ? next.DurationMs : (previous.DurationMs > 0 ? previous.DurationMs : knownDur),
             PositionMs = next.PositionMs > 0 ? next.PositionMs : previous.PositionMs
         };
     }

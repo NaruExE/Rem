@@ -53,7 +53,7 @@ public sealed class AudioPlaybackEngine : IDisposable
         get => _volume;
         set
         {
-            var clamped = Math.Clamp(value, 0, 100);
+            var clamped = Math.Clamp(value, 0, 200);
             _volume = clamped;
             var player = _player;
             if (player is not null)

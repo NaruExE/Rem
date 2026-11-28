@@ -25,8 +25,16 @@ public sealed class SpotifyWebApiService : IDisposable
     private readonly ActionLogService _actionLog;
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _tokenGate = new(1, 1);
+    private readonly object _credCacheLock = new();
     private readonly string _artCacheDir;
     private DateTimeOffset _rateLimitedUntilUtc = DateTimeOffset.MinValue;
+    private bool _credCacheLoaded;
+    private string? _cachedClientId;
+    private string? _cachedAccessToken;
+    private string? _cachedRefreshToken;
+    private string? _cachedExpiresRaw;
+    private int _artCacheWrites;
+    private int _pruneInFlight;
     private bool _disposed;
 
     public SpotifyWebApiService(DatabaseService database, ActionLogService actionLog)
@@ -43,16 +51,64 @@ public sealed class SpotifyWebApiService : IDisposable
         };
     }
 
-    public bool HasClientId => !string.IsNullOrWhiteSpace(_database.GetSetting(DatabaseService.KeySpotifyClientId));
+    public bool HasClientId
+    {
+        get
+        {
+            EnsureCredentialCacheLoaded();
+            lock (_credCacheLock)
+            {
+                return !string.IsNullOrWhiteSpace(_cachedClientId);
+            }
+        }
+    }
 
-    public bool IsConnected =>
-        !string.IsNullOrWhiteSpace(_database.GetSetting(DatabaseService.KeySpotifyRefreshToken)) ||
-        !string.IsNullOrWhiteSpace(_database.GetSetting(DatabaseService.KeySpotifyAccessToken));
+    public bool IsConnected
+    {
+        get
+        {
+            EnsureCredentialCacheLoaded();
+            lock (_credCacheLock)
+            {
+                return !string.IsNullOrWhiteSpace(_cachedRefreshToken) ||
+                       !string.IsNullOrWhiteSpace(_cachedAccessToken);
+            }
+        }
+    }
 
     public string? UserDisplayName => _database.GetSetting(DatabaseService.KeySpotifyUserDisplayName);
     public string? LastApiError { get; private set; }
     public bool IsRateLimited => DateTimeOffset.UtcNow < _rateLimitedUntilUtc;
     public int RateLimitRemainingSeconds => Math.Max(0, (int)Math.Ceiling((_rateLimitedUntilUtc - DateTimeOffset.UtcNow).TotalSeconds));
+
+    public void InvalidateCachedCredentials()
+    {
+        lock (_credCacheLock)
+        {
+            _credCacheLoaded = false;
+            _cachedClientId = null;
+            _cachedAccessToken = null;
+            _cachedRefreshToken = null;
+            _cachedExpiresRaw = null;
+        }
+    }
+
+    private void EnsureCredentialCacheLoaded()
+    {
+        lock (_credCacheLock)
+        {
+            if (_credCacheLoaded)
+            {
+                return;
+            }
+
+            _cachedClientId = _database.GetSetting(DatabaseService.KeySpotifyClientId)?.Trim();
+            _cachedAccessToken = _database.GetSetting(DatabaseService.KeySpotifyAccessToken);
+            _cachedRefreshToken = _database.GetSetting(DatabaseService.KeySpotifyRefreshToken);
+            _cachedExpiresRaw = _database.GetSetting(DatabaseService.KeySpotifyTokenExpiresAt);
+            _credCacheLoaded = true;
+        }
+    }
 
     public async Task<(bool Success, string? DisplayName, string? Error)> AuthenticatePkceAsync(
         CancellationToken cancellationToken)
@@ -159,81 +215,113 @@ public sealed class SpotifyWebApiService : IDisposable
         _database.SaveSetting(DatabaseService.KeySpotifyRefreshToken, string.Empty);
         _database.SaveSetting(DatabaseService.KeySpotifyTokenExpiresAt, string.Empty);
         _database.SaveSetting(DatabaseService.KeySpotifyUserDisplayName, string.Empty);
+        InvalidateCachedCredentials();
         _actionLog.Log("Spotify", "Disconnected Spotify Web API PKCE session.");
     }
 
     public async Task<List<SpotifyPlaylistItem>> GetUserPlaylistsAsync(CancellationToken cancellationToken)
     {
         var list = new List<SpotifyPlaylistItem>();
-        using var doc = await SendApiGetAsync("https://api.spotify.com/v1/me/playlists?limit=50", cancellationToken).ConfigureAwait(false);
-        if (doc is null || !doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+        const int pageSize = 50;
+        for (var offset = 0; offset < 200; offset += pageSize)
         {
-            return list;
-        }
-
-        foreach (var p in items.EnumerateArray())
-        {
-            if (p.ValueKind != JsonValueKind.Object)
+            using var doc = await SendApiGetAsync(
+                $"https://api.spotify.com/v1/me/playlists?limit={pageSize}&offset={offset}",
+                cancellationToken).ConfigureAwait(false);
+            if (doc is null || !doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
             {
-                continue;
+                break;
             }
 
-            var id = GetString(p, "id") ?? string.Empty;
-            var uri = GetString(p, "uri") ?? (string.IsNullOrEmpty(id) ? string.Empty : $"spotify:playlist:{id}");
-            var name = GetString(p, "name") ?? "Untitled Playlist";
-            var desc = GetString(p, "description") ?? string.Empty;
-            var owner = p.TryGetProperty("owner", out var ow) ? (GetString(ow, "display_name") ?? GetString(ow, "id") ?? "Spotify") : "Spotify";
-
-            var count = 0;
-            if (p.TryGetProperty("items", out var plItems) && plItems.TryGetProperty("total", out var itTotal) && itTotal.ValueKind == JsonValueKind.Number)
+            var addedThisPage = 0;
+            foreach (var p in items.EnumerateArray())
             {
-                count = itTotal.GetInt32();
-            }
-            else if (p.TryGetProperty("tracks", out var plTracks) && plTracks.TryGetProperty("total", out var trTotal) && trTotal.ValueKind == JsonValueKind.Number)
-            {
-                count = trTotal.GetInt32();
-            }
-
-            string? imageUrl = null;
-            if (p.TryGetProperty("images", out var imgs) && imgs.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var img in imgs.EnumerateArray())
+                if (p.ValueKind != JsonValueKind.Object)
                 {
-                    imageUrl = GetString(img, "url");
-                    if (!string.IsNullOrWhiteSpace(imageUrl))
+                    continue;
+                }
+
+                var id = GetString(p, "id") ?? string.Empty;
+                var uri = GetString(p, "uri") ?? (string.IsNullOrEmpty(id) ? string.Empty : $"spotify:playlist:{id}");
+                var name = GetString(p, "name") ?? "Untitled Playlist";
+                var desc = GetString(p, "description") ?? string.Empty;
+                var owner = p.TryGetProperty("owner", out var ow) ? (GetString(ow, "display_name") ?? GetString(ow, "id") ?? "Spotify") : "Spotify";
+
+                var count = 0;
+                if (p.TryGetProperty("items", out var plItems) && plItems.TryGetProperty("total", out var itTotal) && itTotal.ValueKind == JsonValueKind.Number)
+                {
+                    count = itTotal.GetInt32();
+                }
+                else if (p.TryGetProperty("tracks", out var plTracks) && plTracks.TryGetProperty("total", out var trTotal) && trTotal.ValueKind == JsonValueKind.Number)
+                {
+                    count = trTotal.GetInt32();
+                }
+
+                string? imageUrl = null;
+                if (p.TryGetProperty("images", out var imgs) && imgs.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var img in imgs.EnumerateArray())
                     {
-                        break;
+                        imageUrl = GetString(img, "url");
+                        if (!string.IsNullOrWhiteSpace(imageUrl))
+                        {
+                            break;
+                        }
                     }
                 }
+
+                if (!string.IsNullOrWhiteSpace(uri))
+                {
+                    list.Add(new SpotifyPlaylistItem(id, uri, name, desc, owner, count, imageUrl));
+                }
+
+                addedThisPage++;
             }
 
-            if (!string.IsNullOrWhiteSpace(uri))
+            var hasNext = doc.RootElement.TryGetProperty("next", out var nextProp) &&
+                          nextProp.ValueKind == JsonValueKind.String &&
+                          !string.IsNullOrWhiteSpace(nextProp.GetString());
+            if (!hasNext || addedThisPage == 0)
             {
-                list.Add(new SpotifyPlaylistItem(id, uri, name, desc, owner, count, imageUrl));
+                break;
             }
         }
 
         return list;
     }
 
-    // Feb 2026 Web API spec: GET /v1/playlists/{id}/items (NOT /tracks) with public embed fallback
+    // Feb 2026 Web API spec: GET /v1/playlists/{id}/items (NOT /tracks) with public embed fallback + pagination
     public async Task<PlaylistItemsResult> GetPlaylistItemsAsync(
         string playlistId,
         string? playlistUri,
         CancellationToken cancellationToken)
     {
+        var page = await GetPlaylistItemsPageAsync(playlistId, playlistUri, offset: 0, limit: 50, cancellationToken).ConfigureAwait(false);
+        return new PlaylistItemsResult(page.Tracks, page.AccessRestricted);
+    }
+
+    public async Task<(List<SpotifyTrackItem> Tracks, int Total, bool HasMore, bool AccessRestricted)> GetPlaylistItemsPageAsync(
+        string playlistId,
+        string? playlistUri,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(playlistId))
         {
-            return new PlaylistItemsResult([], AccessRestricted: true);
+            return ([], 0, false, true);
         }
 
+        var pageLimit = Math.Clamp(limit, 1, 50);
         var token = await EnsureAccessTokenAsync(cancellationToken).ConfigureAwait(false);
         var apiRestricted = string.IsNullOrWhiteSpace(token);
         var tracks = new List<SpotifyTrackItem>();
+        var total = 0;
+        var hasMore = false;
 
         if (!string.IsNullOrWhiteSpace(token))
         {
-            var url = $"https://api.spotify.com/v1/playlists/{Uri.EscapeDataString(playlistId)}/items?limit=50";
+            var url = $"https://api.spotify.com/v1/playlists/{Uri.EscapeDataString(playlistId)}/items?limit={pageLimit}&offset={Math.Max(0, offset)}";
             using var resp = await SendAuthorizedAsync(HttpMethod.Get, url, token, cancellationToken).ConfigureAwait(false);
 
             if (resp.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound)
@@ -244,6 +332,15 @@ public sealed class SpotifyWebApiService : IDisposable
             {
                 var body = await resp.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using var doc = JsonDocument.Parse(body);
+
+                if (doc.RootElement.TryGetProperty("total", out var totProp) && totProp.ValueKind == JsonValueKind.Number)
+                {
+                    total = totProp.GetInt32();
+                }
+
+                hasMore = doc.RootElement.TryGetProperty("next", out var nextProp) &&
+                          nextProp.ValueKind == JsonValueKind.String &&
+                          !string.IsNullOrWhiteSpace(nextProp.GetString());
 
                 if (doc.RootElement.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
                 {
@@ -273,9 +370,10 @@ public sealed class SpotifyWebApiService : IDisposable
             }
         }
 
-        if (tracks.Count > 0)
+        if (tracks.Count > 0 || offset > 0)
         {
-            return new PlaylistItemsResult(tracks, AccessRestricted: false);
+            if (total == 0) total = offset + tracks.Count;
+            return (tracks, total, hasMore, false);
         }
 
         // Spotify's Dev Mode Web API blocks reading playlists owned by other users or Spotify itself;
@@ -284,10 +382,10 @@ public sealed class SpotifyWebApiService : IDisposable
         if (embedTracks.Count > 0)
         {
             _actionLog.Log("Spotify", $"Loaded {embedTracks.Count} tracks for playlist {playlistId} via public embed fallback.");
-            return new PlaylistItemsResult(embedTracks, AccessRestricted: false);
+            return (embedTracks, embedTracks.Count, false, false);
         }
 
-        return new PlaylistItemsResult([], AccessRestricted: apiRestricted);
+        return ([], 0, false, apiRestricted);
     }
 
     private async Task<List<SpotifyTrackItem>> FetchPlaylistEmbedTracksAsync(
@@ -418,12 +516,31 @@ public sealed class SpotifyWebApiService : IDisposable
 
     public async Task<List<SpotifyTrackItem>> GetLikedSongsAsync(CancellationToken cancellationToken)
     {
+        var page = await GetLikedSongsPageAsync(offset: 0, limit: 50, cancellationToken).ConfigureAwait(false);
+        return page.Tracks;
+    }
+
+    public async Task<(List<SpotifyTrackItem> Tracks, int Total, bool HasMore)> GetLikedSongsPageAsync(
+        int offset,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         var list = new List<SpotifyTrackItem>();
-        using var doc = await SendApiGetAsync("https://api.spotify.com/v1/me/tracks?limit=50", cancellationToken).ConfigureAwait(false);
+        var pageLimit = Math.Clamp(limit, 1, 50);
+        using var doc = await SendApiGetAsync(
+            $"https://api.spotify.com/v1/me/tracks?limit={pageLimit}&offset={Math.Max(0, offset)}",
+            cancellationToken).ConfigureAwait(false);
         if (doc is null || !doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
         {
-            return list;
+            return (list, 0, false);
         }
+
+        var total = doc.RootElement.TryGetProperty("total", out var totProp) && totProp.ValueKind == JsonValueKind.Number
+            ? totProp.GetInt32()
+            : 0;
+        var hasMore = doc.RootElement.TryGetProperty("next", out var nextProp) &&
+                      nextProp.ValueKind == JsonValueKind.String &&
+                      !string.IsNullOrWhiteSpace(nextProp.GetString());
 
         foreach (var entry in items.EnumerateArray())
         {
@@ -450,7 +567,8 @@ public sealed class SpotifyWebApiService : IDisposable
             }
         }
 
-        return list;
+        if (total == 0) total = offset + list.Count;
+        return (list, total, hasMore);
     }
 
     // Feb 2026 Web API spec: GET /v1/me/library/contains?uris=...
@@ -705,10 +823,14 @@ public sealed class SpotifyWebApiService : IDisposable
         return list;
     }
 
-    public async Task<List<SpotifyTrackItem>> GetTopTracksAsync(int limit, CancellationToken cancellationToken)
+    public async Task<List<SpotifyTrackItem>> GetTopTracksAsync(
+        int limit,
+        CancellationToken cancellationToken,
+        string timeRange = "short_term")
     {
         var list = new List<SpotifyTrackItem>();
-        var url = $"https://api.spotify.com/v1/me/top/tracks?limit={Math.Clamp(limit, 1, 20)}&time_range=short_term";
+        var range = string.IsNullOrWhiteSpace(timeRange) ? "short_term" : timeRange;
+        var url = $"https://api.spotify.com/v1/me/top/tracks?limit={Math.Clamp(limit, 1, 20)}&time_range={Uri.EscapeDataString(range)}";
         using var doc = await SendApiGetAsync(url, cancellationToken).ConfigureAwait(false);
         if (doc is null || !doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
         {
@@ -1475,7 +1597,19 @@ public sealed class SpotifyWebApiService : IDisposable
             var tempPath = targetPath + ".tmp";
             File.WriteAllBytes(tempPath, bytes);
             File.Move(tempPath, targetPath, overwrite: true);
-            PruneArtCacheIfNeeded();
+
+            if (Interlocked.Increment(ref _artCacheWrites) % 25 == 0 &&
+                Interlocked.CompareExchange(ref _pruneInFlight, 1, 0) == 0)
+            {
+                try
+                {
+                    PruneArtCacheIfNeeded();
+                }
+                finally
+                {
+                    Volatile.Write(ref _pruneInFlight, 0);
+                }
+            }
         }
         catch
         {
@@ -1635,9 +1769,16 @@ public sealed class SpotifyWebApiService : IDisposable
 
     private async Task<string?> EnsureAccessTokenAsync(CancellationToken cancellationToken)
     {
-        var accessToken = _database.GetSetting(DatabaseService.KeySpotifyAccessToken);
-        var refreshToken = _database.GetSetting(DatabaseService.KeySpotifyRefreshToken);
-        var expiresRaw = _database.GetSetting(DatabaseService.KeySpotifyTokenExpiresAt);
+        EnsureCredentialCacheLoaded();
+        string? accessToken;
+        string? refreshToken;
+        string? expiresRaw;
+        lock (_credCacheLock)
+        {
+            accessToken = _cachedAccessToken;
+            refreshToken = _cachedRefreshToken;
+            expiresRaw = _cachedExpiresRaw;
+        }
 
         if (string.IsNullOrWhiteSpace(accessToken) && string.IsNullOrWhiteSpace(refreshToken))
         {
@@ -1662,8 +1803,19 @@ public sealed class SpotifyWebApiService : IDisposable
         await _tokenGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var currentAccess = _database.GetSetting(DatabaseService.KeySpotifyAccessToken);
-            var expiresRaw = _database.GetSetting(DatabaseService.KeySpotifyTokenExpiresAt);
+            EnsureCredentialCacheLoaded();
+            string? currentAccess;
+            string? expiresRaw;
+            string? clientId;
+            string? refreshToken;
+            lock (_credCacheLock)
+            {
+                currentAccess = _cachedAccessToken;
+                expiresRaw = _cachedExpiresRaw;
+                clientId = _cachedClientId;
+                refreshToken = _cachedRefreshToken?.Trim();
+            }
+
             var isFresh = DateTimeOffset.TryParse(expiresRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var expiresAt)
                 && expiresAt > DateTimeOffset.UtcNow.AddSeconds(90);
 
@@ -1674,8 +1826,6 @@ public sealed class SpotifyWebApiService : IDisposable
                 return currentAccess;
             }
 
-            var clientId = _database.GetSetting(DatabaseService.KeySpotifyClientId)?.Trim();
-            var refreshToken = _database.GetSetting(DatabaseService.KeySpotifyRefreshToken)?.Trim();
             if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(refreshToken))
             {
                 return null;
@@ -1697,7 +1847,10 @@ public sealed class SpotifyWebApiService : IDisposable
             }
 
             SaveTokenPayload(body);
-            return _database.GetSetting(DatabaseService.KeySpotifyAccessToken);
+            lock (_credCacheLock)
+            {
+                return _cachedAccessToken;
+            }
         }
         finally
         {
@@ -1722,7 +1875,20 @@ public sealed class SpotifyWebApiService : IDisposable
         }
 
         var expiresAt = DateTimeOffset.UtcNow.AddSeconds(expiresIn);
-        _database.SaveSetting(DatabaseService.KeySpotifyTokenExpiresAt, expiresAt.ToString("O", CultureInfo.InvariantCulture));
+        var expiresStr = expiresAt.ToString("O", CultureInfo.InvariantCulture);
+        _database.SaveSetting(DatabaseService.KeySpotifyTokenExpiresAt, expiresStr);
+
+        lock (_credCacheLock)
+        {
+            _cachedAccessToken = access;
+            if (!string.IsNullOrWhiteSpace(refresh))
+            {
+                _cachedRefreshToken = refresh;
+            }
+
+            _cachedExpiresRaw = expiresStr;
+            _credCacheLoaded = true;
+        }
     }
 
     private static SpotifyTrackItem? ParseTrackObject(JsonElement tr, string? contextUri)

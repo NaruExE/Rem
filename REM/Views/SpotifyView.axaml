@@ -9,7 +9,7 @@
     <Style Selector="Border.lyric-line">
       <Setter Property="Opacity" Value="0.62" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="CornerRadius" Value="16" />
       <Setter Property="RenderTransformOrigin" Value="50%,50%" />
       <Setter Property="RenderTransform" Value="scale(1)" />
     </Style>
@@ -18,8 +18,15 @@
     </Style>
     <Style Selector="Border.lyric-line.active">
       <Setter Property="Opacity" Value="1.0" />
-      <Setter Property="Background" Value="#1EFFFFFF" />
-      <Setter Property="RenderTransform" Value="scale(1.03)" />
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+          <GradientStop Color="#00FFFFFF" Offset="0" />
+          <GradientStop Color="#22FFFFFF" Offset="0.16" />
+          <GradientStop Color="#22FFFFFF" Offset="0.84" />
+          <GradientStop Color="#00FFFFFF" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
+      <Setter Property="RenderTransform" Value="scale(1.015)" />
     </Style>
     <Style Selector="Border.lyric-line.animated">
       <Setter Property="Transitions">
@@ -29,6 +36,19 @@
           <BrushTransition Property="Background" Duration="0:0:0.24" />
         </Transitions>
       </Setter>
+    </Style>
+    <Style Selector="Border#BottomPlayerBar">
+      <Setter Property="Opacity" Value="1.0" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.24" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border#BottomPlayerBar.lyrics-autohide-hidden">
+      <Setter Property="Opacity" Value="0.0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
     <Style Selector="TextBlock.lyric-text">
       <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -520,43 +540,365 @@
                   </Grid>
                 </Border>
 
-                <!-- Made For You (REM) Personal Mixes -->
+                <!-- Horizontal Shelf 1: Made For You (REM) Personal Mixes -->
                 <StackPanel Spacing="8" IsVisible="{Binding HasWebApiAuth}">
-                  <TextBlock Text="MADE FOR YOU (REM)" Classes="muted" FontSize="11" FontWeight="SemiBold" />
-                  <ItemsControl ItemsSource="{Binding RemMixCards}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="vm:RemMixCardViewModel">
-                        <Button Command="{Binding OpenCommand}"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Padding="0"
-                                Margin="0,0,10,10"
-                                Cursor="Hand">
-                          <Border Classes="rem-card" Width="188" Padding="12,10">
-                            <StackPanel Spacing="5">
-                              <Grid ColumnDefinitions="Auto,*">
-                                <Border Grid.Column="0" CornerRadius="4" Padding="6,2" Background="{Binding AccentBrush}">
-                                  <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold" Foreground="#0B0D12" />
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Grid.Column="0" Text="MADE FOR YOU (REM)" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="rem-icon" Tag="HomeMixesShelf" Click="OnShelfScrollLeftClick" Padding="5" Margin="0,0,4,0" ToolTip.Tip="Scroll left">
+                      <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                    </Button>
+                    <Button Grid.Column="2" Classes="rem-icon" Tag="HomeMixesShelf" Click="OnShelfScrollRightClick" Padding="5" ToolTip.Tip="Scroll right">
+                      <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="12" Height="12" />
+                    </Button>
+                  </Grid>
+                  <ScrollViewer x:Name="HomeMixesShelf"
+                                HorizontalScrollBarVisibility="Auto"
+                                VerticalScrollBarVisibility="Disabled"
+                                Padding="0,0,0,6">
+                    <ItemsControl ItemsSource="{Binding RemMixCards}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="12" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:RemMixCardViewModel">
+                          <Button Command="{Binding OpenCommand}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  Padding="0"
+                                  Cursor="Hand">
+                            <Border Classes="rem-card" Width="172" Padding="10">
+                              <StackPanel Spacing="8">
+                                <!-- Full Spotify-style Cover Artwork (affected by Show Playlist & Mix Cover Icons setting) -->
+                                <Border Width="150" Height="150"
+                                        CornerRadius="8"
+                                        ClipToBounds="True"
+                                        Background="{Binding CoverGradientBrush}"
+                                        IsVisible="{Binding ShowCoverArt}">
+                                  <Grid>
+                                    <Image Source="{Binding CoverBitmap}"
+                                           Stretch="UniformToFill"
+                                           Opacity="0.68"
+                                           IsVisible="{Binding HasCoverPhoto}" />
+                                    <Border>
+                                      <Border.Background>
+                                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                          <GradientStop Color="#22000000" Offset="0" />
+                                          <GradientStop Color="#B8080A0F" Offset="1" />
+                                        </LinearGradientBrush>
+                                      </Border.Background>
+                                    </Border>
+                                    <PathIcon Data="{Binding IconGeometry}"
+                                              Width="58" Height="58"
+                                              Foreground="{Binding AccentBrush}"
+                                              Opacity="0.22"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Top"
+                                              Margin="0,10,10,0" />
+                                    <Border CornerRadius="4"
+                                            Padding="6,2"
+                                            Background="{Binding AccentBrush}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top"
+                                            Margin="9,9,0,0">
+                                      <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <PathIcon Data="{Binding IconGeometry}" Width="10" Height="10" Foreground="#0B0D12" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold" Foreground="#0B0D12" VerticalAlignment="Center" />
+                                      </StackPanel>
+                                    </Border>
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          VerticalAlignment="Bottom"
+                                          Margin="10,0,10,10">
+                                      <TextBlock Grid.Column="0"
+                                                 Text="{Binding CoverHeadline}"
+                                                 FontSize="16"
+                                                 FontWeight="Bold"
+                                                 Foreground="#FFFFFF"
+                                                 LineHeight="19"
+                                                 VerticalAlignment="Bottom" />
+                                      <TextBlock Grid.Column="1"
+                                                 Text="{Binding CoverBigNumber}"
+                                                 FontSize="22"
+                                                 FontWeight="Bold"
+                                                 Foreground="{Binding AccentBrush}"
+                                                 Opacity="0.92"
+                                                 VerticalAlignment="Bottom"
+                                                 Margin="6,0,0,-2" />
+                                    </Grid>
+                                    <Border Height="4"
+                                            Background="{Binding AccentBrush}"
+                                            VerticalAlignment="Bottom" />
+                                  </Grid>
                                 </Border>
-                              </Grid>
-                              <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                              <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="11" MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
-                            </StackPanel>
-                          </Border>
-                        </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+
+                                <!-- Compact Text Badge Fallback when Cover Icons are disabled -->
+                                <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding !ShowCoverArt}">
+                                  <Border Grid.Column="0" CornerRadius="4" Padding="6,2" Background="{Binding AccentBrush}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                      <PathIcon Data="{Binding IconGeometry}" Width="11" Height="11" Foreground="#0B0D12" VerticalAlignment="Center" />
+                                      <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold" Foreground="#0B0D12" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                  </Border>
+                                </Grid>
+
+                                <StackPanel Spacing="2">
+                                  <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="11" MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                </StackPanel>
+                              </StackPanel>
+                            </Border>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
                 </StackPanel>
 
-                <TextBlock Text="RECENT &amp; RECOMMENDED TRACKS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding FypTracks}"
-                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+                <!-- Horizontal Shelves View (Modern) -->
+                <StackPanel Spacing="16" IsVisible="{Binding IsHomeShelvesLayout}">
+                  <!-- Horizontal Shelf 2: Recommended Tracks -->
+                  <StackPanel Spacing="8" IsVisible="{Binding HasFypTracks}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Grid.Column="0" Text="RECOMMENDED FOR YOU" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <Button Grid.Column="1" Classes="rem-icon" Tag="HomeRecommendedShelf" Click="OnShelfScrollLeftClick" Padding="5" Margin="0,0,4,0" ToolTip.Tip="Scroll left">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                      </Button>
+                      <Button Grid.Column="2" Classes="rem-icon" Tag="HomeRecommendedShelf" Click="OnShelfScrollRightClick" Padding="5" ToolTip.Tip="Scroll right">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="12" Height="12" />
+                      </Button>
+                    </Grid>
+                    <ScrollViewer x:Name="HomeRecommendedShelf"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Padding="0,0,0,6">
+                      <ItemsControl ItemsSource="{Binding FypTracks}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:SpotifyTrackRowViewModel">
+                            <Border Classes="rem-card"
+                                    Width="168"
+                                    Padding="10"
+                                    ContextRequested="OnTrackRowContextRequested">
+                              <StackPanel Spacing="7">
+                                <Border Width="146" Height="116"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        ClipToBounds="True">
+                                  <Grid>
+                                    <Button Command="{Binding PlayCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Cursor="Hand">
+                                      <Grid>
+                                        <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                        <PathIcon Data="{x:Static svc:IconCatalog.Spotify}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                                      </Grid>
+                                    </Button>
+                                    <Button Command="{Binding ToggleLikeCommand}"
+                                            Background="#B80E1015"
+                                            BorderThickness="0"
+                                            CornerRadius="999"
+                                            Width="26" Height="26"
+                                            Padding="0"
+                                            Margin="6"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Cursor="Hand"
+                                            ToolTip.Tip="{Binding LikeMenuHeader}">
+                                      <Grid>
+                                        <PathIcon Data="{x:Static svc:IconCatalog.Heart}" Foreground="#1DB954" Width="12" Height="12" IsVisible="{Binding IsLiked}" />
+                                        <PathIcon Data="{x:Static svc:IconCatalog.HeartOutline}" Foreground="#FFFFFF" Width="12" Height="12" IsVisible="{Binding !IsLiked}" />
+                                      </Grid>
+                                    </Button>
+                                  </Grid>
+                                </Border>
+                                <Button Command="{Binding PlayCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+                                  <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Artists}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                  </StackPanel>
+                                </Button>
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </StackPanel>
+
+                  <!-- Horizontal Shelf 3: Your Top Artists -->
+                  <StackPanel Spacing="8" IsVisible="{Binding HasHomeTopArtists}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Grid.Column="0" Text="YOUR TOP ARTISTS" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <Button Grid.Column="1" Classes="rem-icon" Tag="HomeArtistsShelf" Click="OnShelfScrollLeftClick" Padding="5" Margin="0,0,4,0" ToolTip.Tip="Scroll left">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                      </Button>
+                      <Button Grid.Column="2" Classes="rem-icon" Tag="HomeArtistsShelf" Click="OnShelfScrollRightClick" Padding="5" ToolTip.Tip="Scroll right">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="12" Height="12" />
+                      </Button>
+                    </Grid>
+                    <ScrollViewer x:Name="HomeArtistsShelf"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Padding="0,0,0,6">
+                      <ItemsControl ItemsSource="{Binding HomeTopArtists}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:SpotifyArtistCardViewModel">
+                            <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                              <Border Classes="rem-card" Width="148" Padding="10">
+                                <StackPanel Spacing="7" HorizontalAlignment="Center">
+                                  <Border Width="82" Height="82" CornerRadius="41" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True" HorizontalAlignment="Center">
+                                    <Grid>
+                                      <Image Source="{Binding PhotoBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasPhoto}" />
+                                      <PathIcon Data="{x:Static svc:IconCatalog.Radio}" Foreground="{DynamicResource TextMutedBrush}" Width="22" Height="22" IsVisible="{Binding !HasPhoto}" />
+                                    </Grid>
+                                  </Border>
+                                  <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                              </Border>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </StackPanel>
+
+                  <!-- Horizontal Shelf 4: Recently Played -->
+                  <StackPanel Spacing="8" IsVisible="{Binding HasHomeRecentTracks}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Grid.Column="0" Text="RECENTLY PLAYED" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <Button Grid.Column="1" Classes="rem-icon" Tag="HomeRecentShelf" Click="OnShelfScrollLeftClick" Padding="5" Margin="0,0,4,0" ToolTip.Tip="Scroll left">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                      </Button>
+                      <Button Grid.Column="2" Classes="rem-icon" Tag="HomeRecentShelf" Click="OnShelfScrollRightClick" Padding="5" ToolTip.Tip="Scroll right">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="12" Height="12" />
+                      </Button>
+                    </Grid>
+                    <ScrollViewer x:Name="HomeRecentShelf"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Padding="0,0,0,6">
+                      <ItemsControl ItemsSource="{Binding HomeRecentTracks}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:SpotifyTrackRowViewModel">
+                            <Border Classes="rem-card"
+                                    Width="168"
+                                    Padding="10"
+                                    ContextRequested="OnTrackRowContextRequested">
+                              <StackPanel Spacing="7">
+                                <Border Width="146" Height="116"
+                                        CornerRadius="8"
+                                        Background="{DynamicResource SurfaceAltBrush}"
+                                        ClipToBounds="True">
+                                  <Grid>
+                                    <Button Command="{Binding PlayCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Cursor="Hand">
+                                      <Grid>
+                                        <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                        <PathIcon Data="{x:Static svc:IconCatalog.Spotify}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                                      </Grid>
+                                    </Button>
+                                    <Button Command="{Binding ToggleLikeCommand}"
+                                            Background="#B80E1015"
+                                            BorderThickness="0"
+                                            CornerRadius="999"
+                                            Width="26" Height="26"
+                                            Padding="0"
+                                            Margin="6"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Cursor="Hand"
+                                            ToolTip.Tip="{Binding LikeMenuHeader}">
+                                      <Grid>
+                                        <PathIcon Data="{x:Static svc:IconCatalog.Heart}" Foreground="#1DB954" Width="12" Height="12" IsVisible="{Binding IsLiked}" />
+                                        <PathIcon Data="{x:Static svc:IconCatalog.HeartOutline}" Foreground="#FFFFFF" Width="12" Height="12" IsVisible="{Binding !IsLiked}" />
+                                      </Grid>
+                                    </Button>
+                                  </Grid>
+                                </Border>
+                                <Button Command="{Binding PlayCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+                                  <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Artists}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                  </StackPanel>
+                                </Button>
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </StackPanel>
+
+                  <!-- Horizontal Shelf 5: Albums For You -->
+                  <StackPanel Spacing="8" IsVisible="{Binding HasHomeAlbums}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Grid.Column="0" Text="ALBUMS FOR YOU" Classes="muted" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                      <Button Grid.Column="1" Classes="rem-icon" Tag="HomeAlbumsShelf" Click="OnShelfScrollLeftClick" Padding="5" Margin="0,0,4,0" ToolTip.Tip="Scroll left">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="12" Height="12" />
+                      </Button>
+                      <Button Grid.Column="2" Classes="rem-icon" Tag="HomeAlbumsShelf" Click="OnShelfScrollRightClick" Padding="5" ToolTip.Tip="Scroll right">
+                        <PathIcon Data="{x:Static svc:IconCatalog.ChevronRight}" Width="12" Height="12" />
+                      </Button>
+                    </Grid>
+                    <ScrollViewer x:Name="HomeAlbumsShelf"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  Padding="0,0,0,6">
+                      <ItemsControl ItemsSource="{Binding HomeAlbums}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:SpotifyAlbumCardViewModel">
+                            <Button Command="{Binding OpenCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                              <Border Classes="rem-card" Width="162" Padding="10">
+                                <StackPanel Spacing="7">
+                                  <Border Width="140" Height="112" CornerRadius="8" Background="{DynamicResource SurfaceAltBrush}" ClipToBounds="True">
+                                    <Grid>
+                                      <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                      <PathIcon Data="{x:Static svc:IconCatalog.Disc}" Foreground="{DynamicResource TextMutedBrush}" Width="24" Height="24" IsVisible="{Binding !HasCover}" />
+                                    </Grid>
+                                  </Border>
+                                  <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding Subtitle}" Classes="muted" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                              </Border>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </StackPanel>
+                </StackPanel>
+
+                <!-- Classic List View (Old Style · Lowest RAM) -->
+                <StackPanel Spacing="8" IsVisible="{Binding IsHomeClassicLayout}">
+                  <TextBlock Text="RECOMMENDED FOR YOU" Classes="muted" FontSize="11" FontWeight="SemiBold" IsVisible="{Binding HasFypTracks}" />
+                  <ItemsControl ItemsSource="{Binding FypTracks}"
+                                Opacity="{Binding ListFadeOpacity}"
+                                ItemTemplate="{StaticResource SpotifyTrackRowTemplate}">
+                    <ItemsControl.Transitions>
+                      <Transitions>
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                      </Transitions>
+                    </ItemsControl.Transitions>
+                  </ItemsControl>
+                </StackPanel>
               </StackPanel>
 
               <!-- SECTION: MULTI-SEARCH RESULTS -->
@@ -726,8 +1068,15 @@
                 </Border>
 
                 <TextBlock Text="TOP TRACKS" Classes="muted" FontSize="11" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{Binding CollectionTracks}"
-                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+                <ItemsControl ItemsSource="{Binding DetailTracks}"
+                              Opacity="{Binding ListFadeOpacity}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}">
+                  <ItemsControl.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    </Transitions>
+                  </ItemsControl.Transitions>
+                </ItemsControl>
 
                 <TextBlock Text="ALBUMS &amp; SINGLES" Classes="muted" FontSize="11" FontWeight="SemiBold" />
                 <ItemsControl ItemsSource="{Binding ArtistAlbums}">
@@ -807,8 +1156,15 @@
                   </Grid>
                 </Border>
 
-                <ItemsControl ItemsSource="{Binding CollectionTracks}"
-                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+                <ItemsControl ItemsSource="{Binding DetailTracks}"
+                              Opacity="{Binding ListFadeOpacity}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}">
+                  <ItemsControl.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    </Transitions>
+                  </ItemsControl.Transitions>
+                </ItemsControl>
               </StackPanel>
 
               <!-- SECTION: SAVED ALBUMS -->
@@ -888,36 +1244,94 @@
 
               <!-- SECTION: REM MIX / SONG RADIO / ARTIST RADIO -->
               <StackPanel Spacing="14" IsVisible="{Binding IsRemMixSection}">
-                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-                  <StackPanel Spacing="4" Margin="0,0,12,0">
-                    <TextBlock Text="{Binding ActiveMixBadge}" Foreground="{DynamicResource PrimaryAccentBrush}" FontSize="10" FontWeight="Bold" />
-                    <TextBlock Text="{Binding ActiveMixTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding ActiveMixSubtitle}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                  </StackPanel>
-                  <Button Grid.Column="1" Classes="rem-soft" Command="{Binding RefreshActiveMixCommand}" IsEnabled="{Binding !IsBusy}" Content="Regenerate" Margin="0,0,6,0" VerticalAlignment="Center" />
-                  <Button Grid.Column="2" Classes="rem-soft" Command="{Binding SaveActiveMixToSpotifyCommand}" IsEnabled="{Binding !IsBusy}" Content="Save to Spotify" Margin="0,0,6,0" VerticalAlignment="Center" />
-                  <Button Grid.Column="3" Classes="rem-primary" Command="{Binding PlayActiveCollectionCommand}" Content="Play All" VerticalAlignment="Center" />
-                </Grid>
+                <Border Classes="rem-card" Padding="14">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                    <Border Grid.Column="0"
+                            Width="96" Height="96"
+                            CornerRadius="8"
+                            ClipToBounds="True"
+                            Margin="0,0,16,0"
+                            Background="{Binding ActiveMixCoverGradientBrush}"
+                            IsVisible="{Binding ShowPlaylistIcons}">
+                      <Grid>
+                        <Image Source="{Binding ActiveMixCoverBitmap}"
+                               Stretch="UniformToFill"
+                               Opacity="0.68"
+                               IsVisible="{Binding HasActiveMixCoverBitmap}" />
+                        <Border>
+                          <Border.Background>
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                              <GradientStop Color="#20000000" Offset="0" />
+                              <GradientStop Color="#AA080A0F" Offset="1" />
+                            </LinearGradientBrush>
+                          </Border.Background>
+                        </Border>
+                        <PathIcon Data="{Binding ActiveMixIconGeometry}"
+                                  Width="36" Height="36"
+                                  Foreground="{Binding ActiveMixAccentBrush}"
+                                  Opacity="0.28"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Top"
+                                  Margin="0,8,8,0" />
+                        <TextBlock Text="{Binding ActiveMixCoverBigNumber}"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="{Binding ActiveMixAccentBrush}"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Bottom"
+                                   Margin="9,0,0,8" />
+                        <Border Height="3"
+                                Background="{Binding ActiveMixAccentBrush}"
+                                VerticalAlignment="Bottom" />
+                      </Grid>
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,12,0" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Data="{Binding ActiveMixIconGeometry}" Foreground="{Binding ActiveMixAccentBrush}" Width="12" Height="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ActiveMixBadge}" Foreground="{Binding ActiveMixAccentBrush}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding ActiveMixTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding ActiveMixSubtitle}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Classes="rem-soft" Command="{Binding RefreshActiveMixCommand}" IsEnabled="{Binding !IsBusy}" Content="Regenerate" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <Button Grid.Column="3" Classes="rem-soft" Command="{Binding SaveActiveMixToSpotifyCommand}" IsEnabled="{Binding !IsBusy}" Content="Save to Spotify" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <Button Grid.Column="4" Classes="rem-primary" Command="{Binding PlayActiveCollectionCommand}" Content="Play All" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
 
                 <Border Classes="rem-card" Padding="14" IsVisible="{Binding HasFeedMessage}">
                   <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                 </Border>
 
-                <ItemsControl ItemsSource="{Binding CollectionTracks}"
-                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}" />
+                <ItemsControl ItemsSource="{Binding DetailTracks}"
+                              Opacity="{Binding ListFadeOpacity}"
+                              ItemTemplate="{StaticResource SpotifyTrackRowTemplate}">
+                  <ItemsControl.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    </Transitions>
+                  </ItemsControl.Transitions>
+                </ItemsControl>
               </StackPanel>
             </StackPanel>
           </ScrollViewer>
 
           <!-- Virtualized Liked Songs / Playlist View -->
           <Grid Grid.Row="3"
-                RowDefinitions="Auto,Auto,*"
+                RowDefinitions="Auto,Auto,Auto,*"
                 Margin="18,14,18,12"
                 IsVisible="{Binding IsCollectionSection}">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,12">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,10">
               <StackPanel Spacing="2" Margin="0,0,12,0">
                 <TextBlock Text="{Binding CollectionTitle}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding CollectionSubtitle}" Classes="muted" FontSize="12" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding CollectionSubtitle}" Classes="muted" FontSize="12" />
+                  <TextBlock Text="{Binding CollectionPaginationStatus}"
+                             Foreground="{DynamicResource PrimaryAccentBrush}"
+                             FontSize="11"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding HasCollectionPaginationStatus}" />
+                </StackPanel>
               </StackPanel>
 
               <Button Grid.Column="1"
@@ -947,19 +1361,79 @@
               </Button>
             </Grid>
 
-            <Border Grid.Row="1" Classes="rem-card" Padding="14" Margin="0,0,0,12" IsVisible="{Binding HasFeedMessage}">
+            <!-- Search Inside Playlist / Liked Songs -->
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <Border Grid.Column="0"
+                      Background="{DynamicResource SurfaceAltBrush}"
+                      BorderBrush="{DynamicResource BorderSoftBrush}"
+                      BorderThickness="1"
+                      CornerRadius="8"
+                      Padding="10,4">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <PathIcon Grid.Column="0"
+                            Data="{x:Static svc:IconCatalog.Search}"
+                            Foreground="{DynamicResource TextMutedBrush}"
+                            Width="13" Height="13"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1"
+                           Text="{Binding CollectionFilterQuery}"
+                           Watermark="Search in this playlist (title, artist, album)..."
+                           Background="Transparent"
+                           BorderThickness="0"
+                           Padding="0,3"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+                  <Button Grid.Column="2"
+                          Classes="rem-icon"
+                          Command="{Binding ClearCollectionFilterCommand}"
+                          IsVisible="{Binding HasCollectionFilter}"
+                          ToolTip.Tip="Clear playlist filter"
+                          Padding="4">
+                    <PathIcon Data="{x:Static svc:IconCatalog.Close}" Width="11" Height="11" />
+                  </Button>
+                </Grid>
+              </Border>
+              <TextBlock Grid.Column="1"
+                         Text="{Binding CollectionFilterSummary}"
+                         Classes="muted"
+                         FontSize="11"
+                         VerticalAlignment="Center"
+                         Margin="10,0,0,0"
+                         IsVisible="{Binding HasCollectionFilter}" />
+            </Grid>
+
+            <Border Grid.Row="2" Classes="rem-card" Padding="14" Margin="0,0,0,10" IsVisible="{Binding HasFeedMessage}">
               <TextBlock Text="{Binding FeedMessage}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
             </Border>
 
-            <ListBox Grid.Row="2"
+            <Border Grid.Row="3"
+                    Classes="rem-card"
+                    Padding="24"
+                    VerticalAlignment="Top"
+                    IsVisible="{Binding ShowCollectionLoadingPlaceholder}">
+              <StackPanel Spacing="8" HorizontalAlignment="Center">
+                <TextBlock Text="Loading tracks..." FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                <TextBlock Text="Fetching playlist tracks from Spotify" Classes="muted" FontSize="11" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Border>
+
+            <ListBox Grid.Row="3"
                      Classes="virtual-tracks"
                      ItemsSource="{Binding CollectionTracks}"
+                     Opacity="{Binding ListFadeOpacity}"
                      ItemTemplate="{StaticResource SpotifyTrackRowTemplate}"
                      Background="Transparent"
                      BorderThickness="0"
                      Padding="0"
                      Margin="0,0,0,28"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+              </ListBox.Transitions>
+            </ListBox>
           </Grid>
 
           <!-- Rem Companion Sitting Above Player (Bottom-Right of Song List, Left of Lyrics) -->
@@ -1402,9 +1876,9 @@
         </Border>
       </Border>
 
-      <!-- Fullscreen Lyrics Stage Overlay (keeps bottom Player Bar visible) -->
+      <!-- Fullscreen Lyrics Stage Overlay (full height behind auto-hiding Player Bar) -->
       <Border Grid.Row="0"
-              Grid.RowSpan="2"
+              Grid.RowSpan="3"
               Background="{Binding LyricsFullscreenBackgroundBrush}"
               IsVisible="{Binding IsLyricsFullscreen}">
         <Grid>
@@ -1553,7 +2027,7 @@
                            IsVisible="{Binding IsSyncPickMode}" />
 
                 <ItemsControl x:Name="FullscreenLyricsItemsControl"
-                              ItemsSource="{Binding LyricLines}"
+                              ItemsSource="{Binding FullscreenLyricLines}"
                               IsVisible="{Binding IsSyncedLyrics}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="vm:SpotifyLyricLineViewModel">
@@ -1568,8 +2042,8 @@
                                 Classes.active="{Binding IsActive}"
                                 Classes.past="{Binding IsPast}"
                                 Classes.animated="{Binding IsLyricsAnimated}"
-                                Padding="14,10"
-                                Margin="0,0,0,4">
+                                Padding="16,10"
+                                Margin="12,0,12,4">
                           <Grid ColumnDefinitions="Auto,*">
                             <TextBlock Grid.Column="0"
                                        Text="{Binding TimestampDisplay}"
@@ -1606,8 +2080,19 @@
         </Grid>
       </Border>
 
+      <!-- Bottom hover zone to reveal the player bar when auto-hidden in Fullscreen Lyrics mode -->
+      <Border x:Name="LyricsPlayerHoverZone"
+              Grid.Row="2"
+              Height="96"
+              VerticalAlignment="Bottom"
+              Background="#01000000"
+              ZIndex="19"
+              IsVisible="{Binding IsLyricsFullscreen}" />
+
       <!-- Floating Bottom Player Bar -->
-      <Border Grid.Row="2"
+      <Border x:Name="BottomPlayerBar"
+              Grid.Row="2"
+              ZIndex="20"
               Margin="12,4,12,12"
               CornerRadius="{DynamicResource CardCornerRadius}"
               Background="{DynamicResource SurfaceBrush}"

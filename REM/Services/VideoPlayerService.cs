@@ -430,7 +430,7 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
 
     public async Task SetVolumeAsync(int volume, CancellationToken cancellationToken = default)
     {
-        var clamped = Math.Clamp(volume, 0, 100);
+        var clamped = Math.Clamp(volume, 0, 200);
         _volume = clamped;
 
         var player = _player;
@@ -446,7 +446,9 @@ public sealed class VideoPlayerService : IDisposable, IAsyncDisposable
             }
         }
 
-        await _database.SaveSettingAsync(_volumeSettingKey, clamped.ToString(CultureInfo.InvariantCulture), cancellationToken)
+        // Persist at most 100% across restarts so amplified sessions don't unexpectedly blast next launch.
+        var persisted = Math.Min(clamped, 100);
+        await _database.SaveSettingAsync(_volumeSettingKey, persisted.ToString(CultureInfo.InvariantCulture), cancellationToken)
             .ConfigureAwait(false);
         RaiseStateChanged();
     }

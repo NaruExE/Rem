@@ -107,23 +107,31 @@ public sealed partial class RemMixGeneratorService : IDisposable
         bool preferDeepCuts,
         CancellationToken cancellationToken)
     {
-        const string cacheKey = "rem-discover-weekly";
+        var cal = CultureInfo.InvariantCulture.Calendar;
+        var weekNum = cal.GetWeekOfYear(DateTime.Now, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        var cacheKey = $"rem-discover-weekly-{DateTime.Now:yyyy}-W{weekNum:D2}";
         if (!forceRefresh)
         {
             var cached = await _database.GetSpotifyCachedMixAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-            if (cached is not null && cached.Tracks.Count > 0 && (DateTime.UtcNow - cached.GeneratedAtUtc).TotalDays < 7)
+            if (cached is not null && cached.Tracks.Count > 0 && cached.GeneratedAtUtc.Date >= DateTime.UtcNow.Date.AddDays(-7))
             {
                 return cached;
             }
         }
 
-        var topTracks = await _webApi.GetTopTracksAsync(12, cancellationToken).ConfigureAwait(false);
-        var recent = await _webApi.GetRecentlyPlayedAsync(15, cancellationToken).ConfigureAwait(false);
-        var liked = await _webApi.GetLikedSongsAsync(cancellationToken).ConfigureAwait(false);
-        var localHistory = await _database.GetSpotifyRecentPlayHistoryAsync(200, cancellationToken).ConfigureAwait(false);
+        // Seed from medium-term & all-time taste (not last 20 songs) so one recent session doesn't hijack Discover Weekly.
+        var medTracksTask = _webApi.GetTopTracksAsync(14, cancellationToken, "medium_term");
+        var longTracksTask = _webApi.GetTopTracksAsync(14, cancellationToken, "long_term");
+        var likedTask = _webApi.GetLikedSongsAsync(cancellationToken);
+        await Task.WhenAll(medTracksTask, longTracksTask, likedTask).ConfigureAwait(false);
+
+        var medTracks = await medTracksTask.ConfigureAwait(false);
+        var longTracks = await longTracksTask.ConfigureAwait(false);
+        var liked = await likedTask.ConfigureAwait(false);
+        var localHistory = await _database.GetSpotifyRecentPlayHistoryAsync(250, cancellationToken).ConfigureAwait(false);
 
         var knownUris = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var t in topTracks.Concat(recent).Concat(liked))
+        foreach (var t in medTracks.Concat(longTracks).Concat(liked))
         {
             knownUris.Add(t.Uri);
         }
@@ -132,7 +140,7 @@ public sealed partial class RemMixGeneratorService : IDisposable
             knownUris.Add(h.TrackUri);
         }
 
-        var seeds = topTracks.Concat(recent).Take(8).ToList();
+        var seeds = medTracks.Concat(longTracks).DistinctBy(t => t.Uri).Take(8).ToList();
         var recs = new List<LastFmRecommendation>();
         if (_lastFm.HasApiKey && seeds.Count > 0)
         {
@@ -161,7 +169,7 @@ public sealed partial class RemMixGeneratorService : IDisposable
         var mix = new RemMixDescriptor(
             Key: cacheKey,
             Title: "REM Discover Weekly",
-            Subtitle: $"Fresh finds filtered against your library & play history{(preferDeepCuts ? " · Deep Cuts" : "")}",
+            Subtitle: $"Weekly finds tuned to your long-term taste{(preferDeepCuts ? " · Deep Cuts" : "")}",
             Badge: "WEEKLY",
             AccentHex: "#1DB954",
             GeneratedAtUtc: DateTime.UtcNow,
@@ -181,12 +189,12 @@ public sealed partial class RemMixGeneratorService : IDisposable
     {
         var nowLocal = DateTime.Now;
         var slot = GetTimeSlot(nowLocal.Hour);
-        var cacheKey = $"rem-daylist-{slot.Key}";
+        var cacheKey = $"rem-daylist-{slot.Key}-{nowLocal:yyyy-MM-dd}";
 
         if (!forceRefresh)
         {
             var cached = await _database.GetSpotifyCachedMixAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-            if (cached is not null && cached.Tracks.Count > 0 && (DateTime.UtcNow - cached.GeneratedAtUtc).TotalHours < 4)
+            if (cached is not null && cached.Tracks.Count > 0)
             {
                 return cached;
             }
@@ -200,11 +208,15 @@ public sealed partial class RemMixGeneratorService : IDisposable
             .Take(5)
             .ToList();
 
-        var recent = await _webApi.GetRecentlyPlayedAsync(20, cancellationToken).ConfigureAwait(false);
-        var topTracks = await _webApi.GetTopTracksAsync(12, cancellationToken).ConfigureAwait(false);
+        var medTracksTask = _webApi.GetTopTracksAsync(14, cancellationToken, "medium_term");
+        var recentTask = _webApi.GetRecentlyPlayedAsync(12, cancellationToken);
+        await Task.WhenAll(medTracksTask, recentTask).ConfigureAwait(false);
+
+        var topTracks = await medTracksTask.ConfigureAwait(false);
+        var recent = await recentTask.ConfigureAwait(false);
         if (slotArtistPool.Count == 0)
         {
-            slotArtistPool = recent.Concat(topTracks)
+            slotArtistPool = topTracks.Concat(recent)
                 .Select(t => GetPrimaryArtist(t.Artists))
                 .Where(a => !string.IsNullOrWhiteSpace(a))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -213,9 +225,21 @@ public sealed partial class RemMixGeneratorService : IDisposable
         }
 
         var tags = new List<string>();
-        foreach (var artist in slotArtistPool.Take(3))
+        using var dayTagGate = new SemaphoreSlim(3, 3);
+        var dayTagLists = await Task.WhenAll(slotArtistPool.Take(3).Select(async artist =>
         {
-            var artistTags = await _lastFm.GetArtistTopTagsAsync(artist, cancellationToken).ConfigureAwait(false);
+            await dayTagGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await _lastFm.GetArtistTopTagsAsync(artist, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                dayTagGate.Release();
+            }
+        })).ConfigureAwait(false);
+        foreach (var artistTags in dayTagLists)
+        {
             foreach (var tag in artistTags)
             {
                 if (!tags.Contains(tag, StringComparer.OrdinalIgnoreCase)) tags.Add(tag);
@@ -241,7 +265,7 @@ public sealed partial class RemMixGeneratorService : IDisposable
         var combined = new List<SpotifyTrackItem>();
         var seenUris = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var familiar in recent.Concat(topTracks).Take(8))
+        foreach (var familiar in topTracks.Concat(recent).Take(8))
         {
             if (seenUris.Add(familiar.Uri)) combined.Add(familiar);
         }
@@ -273,45 +297,107 @@ public sealed partial class RemMixGeneratorService : IDisposable
         CancellationToken cancellationToken)
     {
         var idx = Math.Clamp(mixIndex, 1, 3);
-        var cacheKey = $"rem-daily-mix-{idx}";
+        var todayKey = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var cacheKey = $"rem-daily-mix-{idx}-{todayKey}";
         if (!forceRefresh)
         {
             var cached = await _database.GetSpotifyCachedMixAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-            if (cached is not null && cached.Tracks.Count > 0 && (DateTime.UtcNow - cached.GeneratedAtUtc).TotalHours < 20)
+            if (cached is not null && cached.Tracks.Count > 0)
             {
                 return cached;
             }
         }
 
-        var topArtists = await _webApi.GetTopArtistsAsync(18, "medium_term", cancellationToken).ConfigureAwait(false);
-        if (topArtists.Count == 0)
+        // Pull medium_term + long_term top artists so daily mixes reflect genuine distinct tastes, not the last 20 songs.
+        var medArtistsTask = _webApi.GetTopArtistsAsync(20, "medium_term", cancellationToken);
+        var longArtistsTask = _webApi.GetTopArtistsAsync(20, "long_term", cancellationToken);
+        await Task.WhenAll(medArtistsTask, longArtistsTask).ConfigureAwait(false);
+
+        var allArtists = medArtistsTask.Result
+            .Concat(longArtistsTask.Result)
+            .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+            .GroupBy(a => string.IsNullOrWhiteSpace(a.Id) ? a.Name : a.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+
+        if (allArtists.Count == 0)
         {
-            var topTracks = await _webApi.GetTopTracksAsync(18, cancellationToken).ConfigureAwait(false);
-            var artistNames = topTracks.Select(t => GetPrimaryArtist(t.Artists))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            foreach (var name in artistNames)
+            var topTracks = await _webApi.GetTopTracksAsync(18, cancellationToken, "medium_term").ConfigureAwait(false);
+            foreach (var name in topTracks.Select(t => GetPrimaryArtist(t.Artists)).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                topArtists.Add(new SpotifyArtistItem(string.Empty, string.Empty, name, null));
+                allArtists.Add(new SpotifyArtistItem(string.Empty, string.Empty, name, null));
             }
         }
 
-        // Partition top artists cleanly into 3 mix slices.
-        var slice = topArtists
-            .Where((_, i) => (i % 3) == (idx - 1))
-            .Take(5)
-            .ToList();
-        if (slice.Count == 0)
+        // Enrich missing genre info via Last.fm tags when Spotify omitted genres, bounded to top 12 artists.
+        var enrichedArtists = new List<(SpotifyArtistItem Artist, string BucketLabel)>(allArtists.Count);
+        using var tagGate = new SemaphoreSlim(3, 3);
+        var enrichTasks = allArtists.Take(15).Select(async a =>
         {
-            slice = topArtists.Take(4).ToList();
+            string? bucket = ClassifyGenreBucket(a.Genres);
+            if (bucket is null && _lastFm.HasApiKey)
+            {
+                await tagGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var lfmTags = await _lastFm.GetArtistTopTagsAsync(a.Name, cancellationToken).ConfigureAwait(false);
+                    bucket = ClassifyGenreBucket(lfmTags) ?? (lfmTags.Count > 0 ? ToTitle(lfmTags[0]) : null);
+                }
+                finally
+                {
+                    tagGate.Release();
+                }
+            }
+
+            return (Artist: a, BucketLabel: bucket ?? "Mix Rotation");
+        });
+        enrichedArtists.AddRange(await Task.WhenAll(enrichTasks).ConfigureAwait(false));
+
+        // Group into distinct vibe clusters sorted by artist affinity count, picking cluster idx-1.
+        var clusters = enrichedArtists
+            .GroupBy(x => x.BucketLabel, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .Select(g => (Bucket: g.Key, Artists: g.Select(x => x.Artist).Take(5).ToList()))
+            .ToList();
+
+        List<SpotifyArtistItem> slice;
+        string clusterLabel;
+        if (clusters.Count >= idx)
+        {
+            clusterLabel = clusters[idx - 1].Bucket;
+            slice = clusters[idx - 1].Artists;
+        }
+        else
+        {
+            clusterLabel = clusters.Count > 0 ? clusters[(idx - 1) % clusters.Count].Bucket : "Personal Rotation";
+            slice = allArtists
+                .Where((_, i) => (i % 3) == (idx - 1))
+                .Take(5)
+                .ToList();
+            if (slice.Count == 0)
+            {
+                slice = allArtists.Take(4).ToList();
+            }
         }
 
         var recs = new List<LastFmRecommendation>();
-        foreach (var artist in slice.Take(4))
+        using var seedGate = new SemaphoreSlim(3, 3);
+        var seedTasks = slice.Take(4).Select(async artist =>
         {
-            var seeds = await _lastFm.GetArtistRadioSeedsAsync(artist.Name, 8, preferDeepCuts: false, cancellationToken)
-                .ConfigureAwait(false);
-            recs.AddRange(seeds);
+            await seedGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await _lastFm.GetArtistRadioSeedsAsync(artist.Name, 8, preferDeepCuts: false, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                seedGate.Release();
+            }
+        });
+        foreach (var seedBatch in await Task.WhenAll(seedTasks).ConfigureAwait(false))
+        {
+            recs.AddRange(seedBatch);
         }
 
         var tracks = await ResolveRecommendationsToSpotifyAsync(recs, targetCount: 16, skipUris: [], cancellationToken)
@@ -328,10 +414,10 @@ public sealed partial class RemMixGeneratorService : IDisposable
         }
 
         var artistNamesSubtitle = slice.Count > 0
-            ? string.Join(", ", slice.Take(3).Select(a => a.Name)) + (slice.Count > 3 ? " & more" : "")
+            ? $"{clusterLabel} · " + string.Join(", ", slice.Take(3).Select(a => a.Name)) + (slice.Count > 3 ? " & more" : "")
             : "Mixed from your top rotation";
 
-        var accents = new[] { "#1DB954", "#3B82F6", "#F59E0B" };
+        var accents = new[] { "#38BDF8", "#A78BFA", "#F472B6" };
         var mix = new RemMixDescriptor(
             Key: cacheKey,
             Title: $"REM Daily Mix {idx}",
@@ -353,11 +439,11 @@ public sealed partial class RemMixGeneratorService : IDisposable
         bool forceRefresh,
         CancellationToken cancellationToken)
     {
-        const string cacheKey = "rem-release-radar";
+        var cacheKey = $"rem-release-radar-{DateTime.Now:yyyy-MM-dd}";
         if (!forceRefresh)
         {
             var cached = await _database.GetSpotifyCachedMixAsync(cacheKey, cancellationToken).ConfigureAwait(false);
-            if (cached is not null && cached.Tracks.Count > 0 && (DateTime.UtcNow - cached.GeneratedAtUtc).TotalHours < 20)
+            if (cached is not null && cached.Tracks.Count > 0)
             {
                 return cached;
             }
@@ -526,6 +612,24 @@ public sealed partial class RemMixGeneratorService : IDisposable
         return list;
     }
 
+    public static string GetCurrentMixCacheKey(string kind)
+    {
+        var nowLocal = DateTime.Now;
+        var cal = CultureInfo.InvariantCulture.Calendar;
+        var weekNum = cal.GetWeekOfYear(nowLocal, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        var todayKey = nowLocal.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        return kind switch
+        {
+            "discover" => $"rem-discover-weekly-{nowLocal:yyyy}-W{weekNum:D2}",
+            "daylist" => $"rem-daylist-{GetTimeSlot(nowLocal.Hour).Key}-{todayKey}",
+            "daily1" => $"rem-daily-mix-1-{todayKey}",
+            "daily2" => $"rem-daily-mix-2-{todayKey}",
+            "daily3" => $"rem-daily-mix-3-{todayKey}",
+            _ => $"rem-release-radar-{todayKey}"
+        };
+    }
+
     private static (string Key, string Label, string AccentHex) GetTimeSlot(int hour) => hour switch
     {
         >= 6 and < 12 => ("morning", "Morning", "#F59E0B"),
@@ -538,6 +642,33 @@ public sealed partial class RemMixGeneratorService : IDisposable
     {
         var idx = artists.IndexOf(',');
         return (idx >= 0 ? artists[..idx] : artists).Trim();
+    }
+
+    private static string? ClassifyGenreBucket(IReadOnlyList<string>? tagsOrGenres)
+    {
+        if (tagsOrGenres is null || tagsOrGenres.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var raw in tagsOrGenres)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            var g = raw.ToLowerInvariant();
+            if (g.Contains("phonk") || g.Contains("drift")) return "Phonk & Drift";
+            if (g.Contains("hip hop") || g.Contains("hip-hop") || g.Contains("rap") || g.Contains("trap") || g.Contains("drill")) return "Hip-Hop & Rap";
+            if (g.Contains("metal") || g.Contains("hardcore") || g.Contains("punk")) return "Rock & Metal";
+            if (g.Contains("rock") || g.Contains("grunge") || g.Contains("alt-rock")) return "Rock & Alternative";
+            if (g.Contains("r&b") || g.Contains("soul") || g.Contains("neo soul")) return "R&B & Soul";
+            if (g.Contains("edm") || g.Contains("house") || g.Contains("techno") || g.Contains("electronic") || g.Contains("synth") || g.Contains("dubstep") || g.Contains("dnb")) return "Electronic & Synth";
+            if (g.Contains("anime") || g.Contains("soundtrack") || g.Contains("ost") || g.Contains("video game") || g.Contains("j-pop") || g.Contains("j-rock")) return "Anime & Soundtracks";
+            if (g.Contains("indie") || g.Contains("folk") || g.Contains("acoustic")) return "Indie & Chill";
+            if (g.Contains("jazz") || g.Contains("lo-fi") || g.Contains("lofi") || g.Contains("chillhop")) return "Lo-Fi & Jazz";
+            if (g.Contains("pop") || g.Contains("k-pop")) return "Pop Hits";
+            if (g.Contains("arabic") || g.Contains("shaabi") || g.Contains("mahraganat") || g.Contains("egypt")) return "Arabic & Regional";
+        }
+
+        return ToTitle(tagsOrGenres[0]);
     }
 
     private static string ToTitle(string raw) =>

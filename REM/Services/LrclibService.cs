@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -7,8 +8,10 @@ namespace REM.Services;
 
 public sealed partial class LrclibService : IDisposable
 {
+    private static readonly TimeSpan MissTtl = TimeSpan.FromMinutes(30);
     private readonly ActionLogService? _actionLog;
     private readonly HttpClient _http;
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _missCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public LrclibService(ActionLogService? actionLog = null)
@@ -84,6 +87,16 @@ public sealed partial class LrclibService : IDisposable
         }
 
         var primaryArtist = SanitizePrimaryArtist(artistName);
+        var missKey = $"{primaryArtist.ToLowerInvariant()}|{cleanTrack.ToLowerInvariant()}|{durationSeconds}";
+        if (_missCache.TryGetValue(missKey, out var cachedUntil))
+        {
+            if (DateTimeOffset.UtcNow < cachedUntil)
+            {
+                return null;
+            }
+
+            _missCache.TryRemove(missKey, out _);
+        }
 
         // Stage 1: Exact /api/get when artist & duration are known
         if (!string.IsNullOrWhiteSpace(primaryArtist) && durationSeconds > 0)
@@ -125,7 +138,18 @@ public sealed partial class LrclibService : IDisposable
             ? cleanTrack
             : $"{primaryArtist} {cleanTrack}";
         var broadUrl = $"https://lrclib.net/api/search?q={Uri.EscapeDataString(broadQuery)}";
-        return await FetchBestSearchMatchAsync(broadUrl, durationSeconds, cancellationToken).ConfigureAwait(false);
+        var broadResult = await FetchBestSearchMatchAsync(broadUrl, durationSeconds, cancellationToken).ConfigureAwait(false);
+        if (broadResult is null && !cancellationToken.IsCancellationRequested)
+        {
+            if (_missCache.Count >= 200)
+            {
+                _missCache.Clear();
+            }
+
+            _missCache[missKey] = DateTimeOffset.UtcNow.Add(MissTtl);
+        }
+
+        return broadResult;
     }
 
     public async Task<List<LrclibSearchCandidate>> SearchCandidatesAsync(

@@ -1,4 +1,5 @@
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,6 +16,7 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
     private static readonly IBrush VideoAccentBrush = new SolidColorBrush(Color.Parse("#FF8800"));
 
     private readonly ModuleManager _moduleManager;
+    private readonly DatabaseService _database;
     private readonly SpotifySoloistService _soloist;
     private readonly SpotifyWebApiService _spotifyWebApi;
     private readonly AudioPlaybackEngine _audioEngine;
@@ -27,11 +29,16 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
     private int _selectedIndex;
     private string? _activeOpenModuleId;
     private string? _lastCheckedLikedTrackUri;
+    private string? _lastLoadedCoverKey;
+    private bool _showCoverArt = true;
+    private bool _isWindowActive = true;
     private string _lastStateFingerprint = string.Empty;
+    private CancellationTokenSource? _coverCts;
     private bool _disposed;
 
     public HeadlessMiniPlayerViewModel(
         ModuleManager moduleManager,
+        DatabaseService database,
         SpotifySoloistService soloist,
         SpotifyWebApiService spotifyWebApi,
         AudioPlaybackEngine audioEngine,
@@ -39,18 +46,38 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
         Action<string> onOpenModuleUi)
     {
         _moduleManager = moduleManager;
+        _database = database;
         _soloist = soloist;
         _spotifyWebApi = spotifyWebApi;
         _audioEngine = audioEngine;
         _videoPlayer = videoPlayer;
         _onOpenModuleUi = onOpenModuleUi;
 
+        _showCoverArt = ReadShowCoverSetting();
+        SavedOffsetX = double.TryParse(_database.GetSetting(DatabaseService.KeyMiniPlayerOffsetX), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ox) ? ox : 0;
+        SavedOffsetY = double.TryParse(_database.GetSetting(DatabaseService.KeyMiniPlayerOffsetY), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var oy) ? oy : 0;
         _moduleManager.ModuleStateChanged += OnAnyModuleStateChanged;
         _soloist.StatusChanged += OnSoloistStatusChanged;
         _audioEngine.PlaybackStateChanged += OnEnginePlaybackChanged;
         _videoPlayer.PlaybackStateChanged += OnVideoPlaybackChanged;
 
         Refresh();
+    }
+
+    public double SavedOffsetX { get; private set; }
+    public double SavedOffsetY { get; private set; }
+
+    public void SaveOffset(double x, double y)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        SavedOffsetX = Math.Round(x, 1);
+        SavedOffsetY = Math.Round(y, 1);
+        _database.SaveSetting(DatabaseService.KeyMiniPlayerOffsetX, SavedOffsetX.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture));
+        _database.SaveSetting(DatabaseService.KeyMiniPlayerOffsetY, SavedOffsetY.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     [ObservableProperty]
@@ -94,6 +121,58 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
 
     [ObservableProperty]
     private bool _isTrackLiked;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCoverBitmap))]
+    private Bitmap? _coverBitmap;
+
+    public bool HasCoverBitmap => _showCoverArt && CoverBitmap is not null;
+
+    public void SetWindowActive(bool isActive)
+    {
+        if (_disposed || _isWindowActive == isActive)
+        {
+            return;
+        }
+
+        _isWindowActive = isActive;
+        if (!isActive)
+        {
+            CancelCoverLoad();
+            ClearCoverBitmap();
+            return;
+        }
+
+        Refresh();
+    }
+
+    public void RefreshDisplaySettings()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _showCoverArt = ReadShowCoverSetting();
+        if (!_showCoverArt)
+        {
+            CancelCoverLoad();
+            ClearCoverBitmap();
+        }
+        else
+        {
+            _lastLoadedCoverKey = null;
+            Refresh();
+        }
+
+        OnPropertyChanged(nameof(HasCoverBitmap));
+    }
+
+    private bool ReadShowCoverSetting()
+    {
+        var raw = _database.GetSetting(DatabaseService.KeySpotifyShowPlayBarCover);
+        return !bool.TryParse(raw, out var val) || val;
+    }
 
     public void SetActiveOpenModuleId(string? moduleId)
     {
@@ -327,6 +406,9 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
             IsVisible = false;
             HasMultiplePlayers = false;
             ShowLikeButton = false;
+            CancelCoverLoad();
+            ClearCoverBitmap();
+            _lastLoadedCoverKey = null;
             return;
         }
 
@@ -372,15 +454,32 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
                 {
                     _lastCheckedLikedTrackUri = uri;
                     IsTrackLiked = false;
-                    if (!string.IsNullOrWhiteSpace(uri) && _spotifyWebApi.IsConnected)
-                    {
-                        _ = RefreshSpotifyLikedStateAsync(uri);
-                    }
+                }
+
+                if (_isWindowActive && !string.IsNullOrWhiteSpace(uri) && _spotifyWebApi.IsConnected)
+                {
+                    _ = RefreshSpotifyLikedStateAsync(uri);
+                }
+
+                var coverKey = $"{uri}|{tr?.AlbumCoverUrl}";
+                if (!_showCoverArt || !_isWindowActive || tr is null || string.IsNullOrWhiteSpace(uri))
+                {
+                    CancelCoverLoad();
+                    ClearCoverBitmap();
+                    _lastLoadedCoverKey = null;
+                }
+                else if (!string.Equals(_lastLoadedCoverKey, coverKey, StringComparison.Ordinal))
+                {
+                    _lastLoadedCoverKey = coverKey;
+                    _ = LoadMiniPlayerCoverAsync(uri, tr.AlbumCoverUrl);
                 }
                 break;
             }
             case "audio-streamer":
             {
+                CancelCoverLoad();
+                ClearCoverBitmap();
+                _lastLoadedCoverKey = null;
                 var tr = _audioEngine.CurrentTrack;
                 AppLabel = "Audio Streamer · Headless";
                 AppIconGeometry = IconCatalog.AudioStreamer;
@@ -396,6 +495,9 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
             }
             case "video-player":
             {
+                CancelCoverLoad();
+                ClearCoverBitmap();
+                _lastLoadedCoverKey = null;
                 AppLabel = "VLC Player · Headless";
                 AppIconGeometry = IconCatalog.VideoPlayer;
                 AppAccentBrush = VideoAccentBrush;
@@ -411,6 +513,86 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
         }
 
         IsVisible = true;
+    }
+
+    private async Task LoadMiniPlayerCoverAsync(string trackUri, string? coverUrl)
+    {
+        CancelCoverLoad();
+        var cts = new CancellationTokenSource();
+        _coverCts = cts;
+
+        try
+        {
+            var resolvedUrl = coverUrl;
+            if (string.IsNullOrWhiteSpace(resolvedUrl) &&
+                _spotifyWebApi.IsConnected &&
+                trackUri.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
+            {
+                var trackId = trackUri["spotify:track:".Length..];
+                var meta = await _spotifyWebApi.GetTrackByIdAsync(trackId, cts.Token).ConfigureAwait(false);
+                resolvedUrl = meta?.AlbumCoverUrl;
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedUrl) || cts.IsCancellationRequested || _disposed || !_isWindowActive || !_showCoverArt)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!cts.IsCancellationRequested && !_disposed)
+                    {
+                        ClearCoverBitmap();
+                    }
+                });
+                return;
+            }
+
+            var bmp = await _spotifyWebApi.LoadSmallBitmapAsync(resolvedUrl, 48, cts.Token).ConfigureAwait(false);
+            if (bmp is null)
+            {
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_disposed || cts.IsCancellationRequested || !_isWindowActive || !_showCoverArt ||
+                    !string.Equals(_soloist.CurrentStatus?.Track?.Uri, trackUri, StringComparison.Ordinal))
+                {
+                    bmp.Dispose();
+                    return;
+                }
+
+                var prev = CoverBitmap;
+                CoverBitmap = bmp;
+                if (!ReferenceEquals(prev, bmp))
+                {
+                    prev?.Dispose();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
+    }
+
+    private void CancelCoverLoad()
+    {
+        var current = Interlocked.Exchange(ref _coverCts, null);
+        if (current is null)
+        {
+            return;
+        }
+
+        try { current.Cancel(); } catch (ObjectDisposedException) { }
+        finally { current.Dispose(); }
+    }
+
+    private void ClearCoverBitmap()
+    {
+        var prev = CoverBitmap;
+        CoverBitmap = null;
+        prev?.Dispose();
     }
 
     private async Task RefreshSpotifyLikedStateAsync(string trackUri)
@@ -438,6 +620,8 @@ public sealed partial class HeadlessMiniPlayerViewModel : ObservableObject, IDis
     {
         if (_disposed) return;
         _disposed = true;
+        CancelCoverLoad();
+        ClearCoverBitmap();
         _moduleManager.ModuleStateChanged -= OnAnyModuleStateChanged;
         _soloist.StatusChanged -= OnSoloistStatusChanged;
         _audioEngine.PlaybackStateChanged -= OnEnginePlaybackChanged;

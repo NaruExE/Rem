@@ -231,4 +231,16 @@ public static class IconCatalog
 
     public static Geometry Send { get; } = StreamGeometry.Parse(
         "M2.01 21L23 12 2.01 3 2 10l15 2-15 2z");
+
+    public static Geometry Compass { get; } = StreamGeometry.Parse(
+        "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.24 5.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12zM12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2z");
+
+    public static Geometry Clock { get; } = StreamGeometry.Parse(
+        "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 10.41 3.79 2.2-.75 1.3L11 13V7h2v5.41z");
+
+    public static Geometry Layers { get; } = StreamGeometry.Parse(
+        "M12 2 2 7l10 5 10-5-10-5zM2 12l10 5 10-5-2.12-1.06L12 14.88 4.12 10.94 2 12zm0 5 10 5 10-5-2.12-1.06L12 19.88l-7.88-3.94L2 17z");
+
+    public static Geometry Radar { get; } = StreamGeometry.Parse(
+        "M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-2.34-5.66l-1.42 1.42A6 6 0 1 0 18 12h-2a4 4 0 1 1-1.17-2.83l-1.42 1.42A2 2 0 1 0 14 12l4.95-4.95A9.97 9.97 0 0 0 12 2z");
 }

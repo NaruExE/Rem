@@ -206,8 +206,8 @@
                         Padding="14,12">
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Spacing="2" Margin="0,0,12,0">
-                      <TextBlock Text="Show Playlist Cover Icons" FontSize="14" FontWeight="SemiBold" />
-                      <TextBlock Text="Displays 26px playlist cover artwork in the Spotify left sidebar"
+                      <TextBlock Text="Show Playlist &amp; Mix Cover Icons" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Displays playlist artwork in the sidebar and cover art for Discover Weekly &amp; Daily Mixes"
                                  Classes="muted" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                     <ToggleSwitch Grid.Column="1"
@@ -231,6 +231,61 @@
                     </StackPanel>
                     <ToggleSwitch Grid.Column="1"
                                   IsChecked="{Binding ShowSpotifyTrackCovers}"
+                                  OnContent="On" OffContent="Off"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="2" Margin="0,0,12,0">
+                        <TextBlock Text="Home (FYP) Menu Layout" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Switch between Horizontal Shelves or the Classic vertical song list (Classic loads zero extra shelves into RAM)"
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <ComboBox Grid.Column="1"
+                                Classes="rem"
+                                ItemsSource="{Binding SpotifyHomeLayoutOptions}"
+                                SelectedItem="{Binding SelectedSpotifyHomeLayout}"
+                                Width="240"
+                                VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsSpotifyShelvesLayoutSelected}">
+                      <StackPanel Spacing="2" Margin="0,0,12,0">
+                        <TextBlock Text="FYP Horizontal Cover Quality" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="Resolution for horizontal Home cards (playlist &amp; classic rows stay lightweight at 44px)"
+                                   Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <ComboBox Grid.Column="1"
+                                Classes="rem"
+                                ItemsSource="{Binding SpotifyHomeCoverQualityOptions}"
+                                SelectedItem="{Binding SelectedSpotifyHomeCoverQuality}"
+                                Width="240"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                        Padding="14,12">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2" Margin="0,0,12,0">
+                      <TextBlock Text="Show Song Cover in Play Bar &amp; Mini-Player" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="Displays current track artwork instead of the Spotify icon in the bottom player and Hub mini-player"
+                                 Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1"
+                                  IsChecked="{Binding ShowSpotifyPlayBarCover}"
                                   OnContent="On" OffContent="Off"
                                   MinWidth="0"
                                   VerticalAlignment="Center" />

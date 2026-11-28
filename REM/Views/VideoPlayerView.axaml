@@ -589,11 +589,27 @@
             </Button>
 
             <Slider Minimum="0"
-                    Maximum="100"
-                    Width="74"
+                    Maximum="200"
+                    Width="92"
                     Value="{Binding Volume, Mode=TwoWay}"
                     VerticalAlignment="Center"
-                    ToolTip.Tip="{Binding Volume, StringFormat='Volume: {0}%'}" />
+                    ToolTip.Tip="Volume / Amplifier (0%–200%)" />
+
+            <TextBlock Text="{Binding VolumeDisplay}"
+                       Classes="muted"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       MinWidth="34"
+                       Margin="4,0,0,0"
+                       IsVisible="{Binding !IsVolumeBoosted}" />
+            <TextBlock Text="{Binding VolumeDisplay}"
+                       Foreground="#F59E0B"
+                       FontSize="11"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       MinWidth="34"
+                       Margin="4,0,0,0"
+                       IsVisible="{Binding IsVolumeBoosted}" />
           </StackPanel>
 
           <!-- Center: Speed + Quality + Track Selectors + External Subtitles + Delay -->

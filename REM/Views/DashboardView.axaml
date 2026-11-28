@@ -287,7 +287,7 @@
       </Border>
 
       <!-- Right Workspace Pane -->
-      <Grid Grid.Column="1" Background="{DynamicResource AppBackgroundBrush}">
+      <Grid x:Name="WorkspaceHostGrid" Grid.Column="1" Background="{DynamicResource AppBackgroundBrush}">
 
         <!-- App Hub Grid -->
         <Grid RowDefinitions="Auto,*"
@@ -440,8 +440,9 @@
         <ContentControl Content="{Binding ActiveModuleView}"
                         IsVisible="{Binding IsModuleViewOpen}" />
 
-        <!-- Fixed Bottom-Right Headless Mini-Player Dock (visible only when 1+ media apps run Headless) -->
-        <StackPanel Orientation="Horizontal"
+        <!-- Moveable Bottom-Right Headless Mini-Player Dock (visible only when 1+ media apps run Headless) -->
+        <StackPanel x:Name="MiniPlayerDock"
+                    Orientation="Horizontal"
                     Spacing="6"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"
@@ -458,25 +459,50 @@
             <PathIcon Data="{x:Static svc:IconCatalog.ChevronLeft}" Width="14" Height="14" />
           </Button>
 
-          <Border Classes="rem-card"
+          <Border x:Name="MiniPlayerCard"
+                  Classes="rem-card"
                   Width="336"
                   CornerRadius="12"
                   BorderBrush="{DynamicResource BorderStrongBrush}"
                   BorderThickness="1"
-                  Padding="12,9">
-            <StackPanel Spacing="7">
+                  Padding="12,5,12,9"
+                  PointerPressed="OnMiniPlayerPointerPressed"
+                  PointerMoved="OnMiniPlayerPointerMoved"
+                  PointerReleased="OnMiniPlayerPointerReleased"
+                  PointerCaptureLost="OnMiniPlayerPointerCaptureLost">
+            <StackPanel Spacing="6">
+              <Border x:Name="MiniPlayerDragHandle"
+                      Height="12"
+                      Background="Transparent"
+                      Cursor="SizeAll"
+                      PointerPressed="OnMiniPlayerPointerPressed"
+                      ToolTip.Tip="Drag to move mini-player · Double-click to reset position">
+                <Border Width="36" Height="3"
+                        CornerRadius="2"
+                        Background="{DynamicResource TextMutedBrush}"
+                        Opacity="0.45"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+              </Border>
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <Border Grid.Column="0"
-                        Width="30" Height="30"
+                        Width="32" Height="32"
                         CornerRadius="7"
+                        ClipToBounds="True"
                         Background="{Binding MiniPlayer.AppAccentBrush}"
                         Margin="0,0,10,0"
                         VerticalAlignment="Center">
-                  <PathIcon Data="{Binding MiniPlayer.AppIconGeometry}"
-                            Width="15" Height="15"
-                            Foreground="#FFFFFF"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center" />
+                  <Grid>
+                    <Image Source="{Binding MiniPlayer.CoverBitmap}"
+                           Stretch="UniformToFill"
+                           IsVisible="{Binding MiniPlayer.HasCoverBitmap}" />
+                    <PathIcon Data="{Binding MiniPlayer.AppIconGeometry}"
+                              Width="15" Height="15"
+                              Foreground="#FFFFFF"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              IsVisible="{Binding !MiniPlayer.HasCoverBitmap}" />
+                  </Grid>
                 </Border>
 
                 <Button Grid.Column="1"

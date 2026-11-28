@@ -205,17 +205,47 @@ public sealed partial class SpotifyPlaylistCardViewModel : ObservableObject, IDi
     }
 }
 
-public sealed partial class RemMixCardViewModel : ObservableObject
+public sealed partial class RemMixCardViewModel : ObservableObject, IDisposable
 {
     private readonly Func<string, Task> _onOpen;
+    private bool _disposed;
 
-    public RemMixCardViewModel(string kind, string title, string subtitle, string badge, string accentHex, Func<string, Task> onOpen)
+    public RemMixCardViewModel(
+        string kind,
+        string title,
+        string subtitle,
+        string badge,
+        string accentHex,
+        string gradientStartHex,
+        string gradientEndHex,
+        string coverHeadline,
+        string coverBigNumber,
+        Geometry iconGeometry,
+        bool showCoverArt,
+        Func<string, Task> onOpen)
     {
         Kind = kind;
         Title = title;
         Subtitle = subtitle;
         Badge = badge;
-        AccentBrush = new SolidColorBrush(Color.TryParse(accentHex, out var c) ? c : Color.Parse("#1DB954"));
+        CoverHeadline = coverHeadline;
+        CoverBigNumber = coverBigNumber;
+        var accentColor = Color.TryParse(accentHex, out var c) ? c : Color.Parse("#1DB954");
+        var startColor = Color.TryParse(gradientStartHex, out var s) ? s : accentColor;
+        var endColor = Color.TryParse(gradientEndHex, out var e) ? e : Color.Parse("#0B0D14");
+        AccentBrush = new SolidColorBrush(accentColor);
+        CoverGradientBrush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+            GradientStops =
+            [
+                new GradientStop(startColor, 0.0),
+                new GradientStop(endColor, 1.0)
+            ]
+        };
+        IconGeometry = iconGeometry;
+        _showCoverArt = showCoverArt;
         _onOpen = onOpen;
     }
 
@@ -223,10 +253,49 @@ public sealed partial class RemMixCardViewModel : ObservableObject
     public string Title { get; }
     public string Subtitle { get; }
     public string Badge { get; }
+    public string CoverHeadline { get; }
+    public string CoverBigNumber { get; }
     public IBrush AccentBrush { get; }
+    public IBrush CoverGradientBrush { get; }
+    public Geometry IconGeometry { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCoverPhoto))]
+    private Bitmap? _coverBitmap;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCoverPhoto))]
+    private bool _showCoverArt = true;
+
+    public bool HasCoverPhoto => ShowCoverArt && CoverBitmap is not null;
+
+    public void SetCover(Bitmap? bmp)
+    {
+        if (_disposed)
+        {
+            bmp?.Dispose();
+            return;
+        }
+
+        var prev = CoverBitmap;
+        CoverBitmap = bmp;
+        if (!ReferenceEquals(prev, bmp))
+        {
+            prev?.Dispose();
+        }
+    }
 
     [RelayCommand]
     private Task OpenAsync() => _onOpen(Kind);
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        var prev = CoverBitmap;
+        CoverBitmap = null;
+        prev?.Dispose();
+    }
 }
 
 public sealed partial class LyricsColorSwatchViewModel : ObservableObject
@@ -472,6 +541,40 @@ public sealed partial class SpotifyViewModel
     [ObservableProperty]
     private string _activeMixBadge = "MIX";
 
+    [ObservableProperty]
+    private Geometry _activeMixIconGeometry = IconCatalog.Sparkles;
+
+    [ObservableProperty]
+    private IBrush _activeMixAccentBrush = new SolidColorBrush(Color.Parse("#1DB954"));
+
+    [ObservableProperty]
+    private IBrush _activeMixCoverGradientBrush = CreateMixGradient("#14532D", "#081C15");
+
+    [ObservableProperty]
+    private string _activeMixCoverBigNumber = "MIX";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveMixCoverBitmap))]
+    private Bitmap? _activeMixCoverBitmap;
+
+    public bool HasActiveMixCoverBitmap => ShowPlaylistIcons && ActiveMixCoverBitmap is not null;
+
+    private static IBrush CreateMixGradient(string startHex, string endHex)
+    {
+        var s = Color.TryParse(startHex, out var sc) ? sc : Color.Parse("#1DB954");
+        var e = Color.TryParse(endHex, out var ec) ? ec : Color.Parse("#0B0D14");
+        return new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+            GradientStops =
+            [
+                new GradientStop(s, 0.0),
+                new GradientStop(e, 1.0)
+            ]
+        };
+    }
+
     // Inline Playlist Create / Edit Modal
     [ObservableProperty]
     private bool _isPlaylistModalOpen;
@@ -588,9 +691,8 @@ public sealed partial class SpotifyViewModel
         }
     }
 
-    private void UpdateAlbumTintFromBytes(byte[] imageBytes)
+    private void UpdateAlbumTintFromColor(Color dominant)
     {
-        var dominant = DominantColorExtractor.ExtractDominantColor(imageBytes);
         var tinted = Color.FromRgb(
             (byte)Math.Clamp(12 + dominant.R * 0.24, 0, 96),
             (byte)Math.Clamp(14 + dominant.G * 0.24, 0, 96),
@@ -670,13 +772,14 @@ public sealed partial class SpotifyViewModel
 
     private void SeedRemMixCards()
     {
+        foreach (var existing in RemMixCards) existing.Dispose();
         RemMixCards.Clear();
-        RemMixCards.Add(new RemMixCardViewModel("discover", "Discover Weekly", "Fresh finds filtered against your library", "WEEKLY", "#1DB954", OpenRemMixCommandAsync));
-        RemMixCards.Add(new RemMixCardViewModel("daylist", "Your Daylist", "Tunes tuned to this time of day", "NOW", "#F59E0B", OpenRemMixCommandAsync));
-        RemMixCards.Add(new RemMixCardViewModel("daily1", "Daily Mix 1", "Favorite artists & close vibes", "MIX 1", "#38BDF8", OpenRemMixCommandAsync));
-        RemMixCards.Add(new RemMixCardViewModel("daily2", "Daily Mix 2", "Second rotation mood & genre", "MIX 2", "#A78BFA", OpenRemMixCommandAsync));
-        RemMixCards.Add(new RemMixCardViewModel("daily3", "Daily Mix 3", "Deep cuts & fresh moods", "MIX 3", "#F472B6", OpenRemMixCommandAsync));
-        RemMixCards.Add(new RemMixCardViewModel("release", "Release Radar", "New drops from artists you follow", "NEW", "#FB7185", OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("discover", "Discover Weekly", "Fresh finds filtered against your library", "WEEKLY", "#1DB954", "#14532D", "#081C15", "Discover\nWeekly", "DW", IconCatalog.Compass, ShowPlaylistIcons, OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("daylist", "Your Daylist", "Tunes tuned to this time of day", "NOW", "#F59E0B", "#78350F", "#1C1208", "your\ndaylist", "DL", IconCatalog.Clock, ShowPlaylistIcons, OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("daily1", "Daily Mix 1", "Top vibe cluster & close artists", "MIX 1", "#38BDF8", "#0C4A6E", "#0B1120", "Daily Mix", "01", IconCatalog.Layers, ShowPlaylistIcons, OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("daily2", "Daily Mix 2", "Second vibe cluster & rotation", "MIX 2", "#A78BFA", "#4C1D95", "#0F0A1E", "Daily Mix", "02", IconCatalog.Disc, ShowPlaylistIcons, OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("daily3", "Daily Mix 3", "Deep vibe cluster & discoveries", "MIX 3", "#F472B6", "#831843", "#1A0B16", "Daily Mix", "03", IconCatalog.Sparkles, ShowPlaylistIcons, OpenRemMixCommandAsync));
+        RemMixCards.Add(new RemMixCardViewModel("release", "Release Radar", "New drops from artists you follow", "NEW", "#FB7185", "#881337", "#160911", "Release\nRadar", "RR", IconCatalog.Radar, ShowPlaylistIcons, OpenRemMixCommandAsync));
     }
 
     private Task OpenRemMixCommandAsync(string kind) => OpenRemMixAsync(kind, forceRefresh: false);
@@ -804,6 +907,7 @@ public sealed partial class SpotifyViewModel
             PushCurrentToNavHistory();
         }
 
+        ReleaseHomeSectionAssetsIfOnHome();
         ActiveDetailPage = SpotifyDetailPage.SavedAlbums;
         DeselectPlaylists();
         FeedMessage = string.Empty;
@@ -862,6 +966,7 @@ public sealed partial class SpotifyViewModel
             PushCurrentToNavHistory();
         }
 
+        ReleaseHomeSectionAssetsIfOnHome();
         ActiveDetailPage = SpotifyDetailPage.TopArtists;
         DeselectPlaylists();
         FeedMessage = string.Empty;
@@ -1022,12 +1127,18 @@ public sealed partial class SpotifyViewModel
             PushCurrentToNavHistory();
         }
 
+        ReleaseHomeSectionAssetsIfOnHome();
         DeselectPlaylists();
         ActiveDetailPage = SpotifyDetailPage.ArtistProfile;
+        ActiveArtistName = string.IsNullOrWhiteSpace(fallbackName) ? "Loading Artist..." : fallbackName;
+        ActiveArtistSubtitle = "Loading artist profile...";
         FeedMessage = string.Empty;
+        ClearTrackCollection(DetailTracks);
+        ClearDetailCollections();
 
         var ct = ResetWorkToken();
         IsBusy = true;
+        ListFadeOpacity = 0.4;
         try
         {
             SpotifyArtistItem? artist = null;
@@ -1093,10 +1204,11 @@ public sealed partial class SpotifyViewModel
                 ActiveArtistSubtitle = $"{lfmProfile.Listeners:N0} Last.fm listeners";
             }
 
-            ClearTrackCollection(CollectionTracks);
+            _soloist.RememberTrackMetadata(topTracks);
+            ClearTrackCollection(DetailTracks);
             for (var i = 0; i < topTracks.Count; i++)
             {
-                CollectionTracks.Add(new SpotifyTrackRowViewModel(i + 1, topTracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
+                DetailTracks.Add(new SpotifyTrackRowViewModel(i + 1, topTracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
             }
 
             ClearAlbumCards(ArtistAlbums);
@@ -1107,15 +1219,15 @@ public sealed partial class SpotifyViewModel
 
             ClearArtistCards(SimilarArtists);
 
-            if (ShowTrackCovers && CollectionTracks.Count > 0)
+            if (ShowTrackCovers && DetailTracks.Count > 0)
             {
-                var rows = CollectionTracks.ToList();
+                var rows = DetailTracks.ToList();
                 _ = SyncRowLikedStatesAsync(rows);
                 _ = LoadRowCoversAsync(rows);
             }
 
             _ = LoadSingleArtistBannerBitmapAsync(artist.ImageUrl, ct);
-            _ = LoadAlbumCardCoversAsync(ArtistAlbums.ToList());
+            _ = LoadAlbumCardCoversAsync(ArtistAlbums.ToList(), ct);
 
             if (lfmProfile?.SimilarArtistNames is { Count: > 0 })
             {
@@ -1124,7 +1236,14 @@ public sealed partial class SpotifyViewModel
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     private async Task LoadSimilarArtistsAsync(List<string> names, CancellationToken ct)
@@ -1204,24 +1323,41 @@ public sealed partial class SpotifyViewModel
         }
 
         if (!_isRestoringNav) PushCurrentToNavHistory();
+        ReleaseHomeSectionAssetsIfOnHome();
         DeselectPlaylists();
         ActiveDetailPage = SpotifyDetailPage.RemMix;
         ActiveMixTitle = $"{track.Name} Radio";
         ActiveMixSubtitle = $"Building radio from {track.Artists}...";
         ActiveMixBadge = "SONG RADIO";
+        ActiveMixIconGeometry = IconCatalog.Radio;
+        ActiveMixAccentBrush = new SolidColorBrush(Color.Parse("#1DB954"));
+        ActiveMixCoverGradientBrush = CreateMixGradient("#14532D", "#081C15");
+        ActiveMixCoverBigNumber = "RD";
+        var oldRadioCov = ActiveMixCoverBitmap;
+        ActiveMixCoverBitmap = null;
+        oldRadioCov?.Dispose();
         _activeCollectionContextUri = null;
         FeedMessage = string.Empty;
+        ClearTrackCollection(DetailTracks);
 
         var ct = ResetWorkToken();
         IsBusy = true;
+        ListFadeOpacity = 0.4;
         try
         {
             var mix = await _mixGenerator.BuildSongRadioAsync(track, PreferDeepCuts, ct);
-            ApplyMixResult(mix);
+            ApplyMixResult(mix, ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     public async Task StartArtistRadioAsync(SpotifyArtistItem artist)
@@ -1229,24 +1365,41 @@ public sealed partial class SpotifyViewModel
         if (!_webApi.IsConnected) return;
 
         if (!_isRestoringNav) PushCurrentToNavHistory();
+        ReleaseHomeSectionAssetsIfOnHome();
         DeselectPlaylists();
         ActiveDetailPage = SpotifyDetailPage.RemMix;
         ActiveMixTitle = $"{artist.Name} Radio";
         ActiveMixSubtitle = "Building artist radio...";
         ActiveMixBadge = "ARTIST RADIO";
+        ActiveMixIconGeometry = IconCatalog.Radio;
+        ActiveMixAccentBrush = new SolidColorBrush(Color.Parse("#8B5CF6"));
+        ActiveMixCoverGradientBrush = CreateMixGradient("#4C1D95", "#0F0A1E");
+        ActiveMixCoverBigNumber = "AR";
+        var oldArtistRadioCov = ActiveMixCoverBitmap;
+        ActiveMixCoverBitmap = null;
+        oldArtistRadioCov?.Dispose();
         _activeCollectionContextUri = null;
         FeedMessage = string.Empty;
+        ClearTrackCollection(DetailTracks);
 
         var ct = ResetWorkToken();
         IsBusy = true;
+        ListFadeOpacity = 0.4;
         try
         {
             var mix = await _mixGenerator.BuildArtistRadioAsync(artist, PreferDeepCuts, ct);
-            ApplyMixResult(mix);
+            ApplyMixResult(mix, ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     private async Task OpenRemMixAsync(string kind, bool forceRefresh)
@@ -1262,10 +1415,15 @@ public sealed partial class SpotifyViewModel
             PushCurrentToNavHistory();
         }
 
+        ReleaseHomeSectionAssetsIfOnHome();
         DeselectPlaylists();
         ActiveDetailPage = SpotifyDetailPage.RemMix;
         _activeCollectionContextUri = null;
         FeedMessage = string.Empty;
+        ClearTrackCollection(DetailTracks);
+        var oldMixCov = ActiveMixCoverBitmap;
+        ActiveMixCoverBitmap = null;
+        oldMixCov?.Dispose();
         ActiveMixTitle = kind switch
         {
             "discover" => "REM Discover Weekly",
@@ -1277,9 +1435,26 @@ public sealed partial class SpotifyViewModel
         };
         ActiveMixSubtitle = "Curating tracks from your listening taste...";
         ActiveMixBadge = "REM MIX";
+        ActiveMixIconGeometry = kind switch
+        {
+            "discover" => IconCatalog.Compass,
+            "daylist" => IconCatalog.Clock,
+            "daily1" => IconCatalog.Layers,
+            "daily2" => IconCatalog.Disc,
+            "daily3" => IconCatalog.Sparkles,
+            _ => IconCatalog.Radar
+        };
+        var matchingCard = RemMixCards.FirstOrDefault(c => string.Equals(c.Kind, kind, StringComparison.Ordinal));
+        if (matchingCard is not null)
+        {
+            ActiveMixAccentBrush = matchingCard.AccentBrush;
+            ActiveMixCoverGradientBrush = matchingCard.CoverGradientBrush;
+            ActiveMixCoverBigNumber = matchingCard.CoverBigNumber;
+        }
 
         var ct = ResetWorkToken();
         IsBusy = true;
+        ListFadeOpacity = 0.4;
         try
         {
             var mix = kind switch
@@ -1292,11 +1467,18 @@ public sealed partial class SpotifyViewModel
                 _ => await _mixGenerator.BuildReleaseRadarAsync(forceRefresh, ct)
             };
 
-            ApplyMixResult(mix);
+            ApplyMixResult(mix, ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     [RelayCommand]
@@ -1305,27 +1487,32 @@ public sealed partial class SpotifyViewModel
         if (_activeMix is null) return;
         var kind = _activeMix.Key switch
         {
-            "rem-discover-weekly" => "discover",
+            var k when k.StartsWith("rem-discover-weekly", StringComparison.Ordinal) => "discover",
             var k when k.StartsWith("rem-daylist", StringComparison.Ordinal) => "daylist",
-            "rem-daily-mix-1" => "daily1",
-            "rem-daily-mix-2" => "daily2",
-            "rem-daily-mix-3" => "daily3",
+            var k when k.StartsWith("rem-daily-mix-1", StringComparison.Ordinal) => "daily1",
+            var k when k.StartsWith("rem-daily-mix-2", StringComparison.Ordinal) => "daily2",
+            var k when k.StartsWith("rem-daily-mix-3", StringComparison.Ordinal) => "daily3",
             _ => "release"
         };
         await OpenRemMixAsync(kind, forceRefresh: true);
     }
 
-    private void ApplyMixResult(RemMixDescriptor mix)
+    private void ApplyMixResult(RemMixDescriptor mix, CancellationToken ct)
     {
         _activeMix = mix;
         ActiveMixTitle = mix.Title;
         ActiveMixSubtitle = mix.Subtitle;
         ActiveMixBadge = mix.Badge;
+        if (Color.TryParse(mix.AccentHex, out var accentCol))
+        {
+            ActiveMixAccentBrush = new SolidColorBrush(accentCol);
+        }
 
-        ClearTrackCollection(CollectionTracks);
+        _soloist.RememberTrackMetadata(mix.Tracks);
+        ClearTrackCollection(DetailTracks);
         for (var i = 0; i < mix.Tracks.Count; i++)
         {
-            CollectionTracks.Add(new SpotifyTrackRowViewModel(i + 1, mix.Tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
+            DetailTracks.Add(new SpotifyTrackRowViewModel(i + 1, mix.Tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
         }
 
         if (mix.Tracks.Count == 0)
@@ -1336,16 +1523,147 @@ public sealed partial class SpotifyViewModel
         }
         else
         {
-            var rows = CollectionTracks.ToList();
+            var rows = DetailTracks.ToList();
             _ = SyncRowLikedStatesAsync(rows);
             if (ShowTrackCovers) _ = LoadRowCoversAsync(rows);
+            if (ShowPlaylistIcons) _ = LoadActiveMixCoverAsync(mix, ct);
+        }
+    }
+
+    private static string GetMixKeyPrefix(string kind) => kind switch
+    {
+        "discover" => "rem-discover-weekly",
+        "daylist" => "rem-daylist",
+        "daily1" => "rem-daily-mix-1",
+        "daily2" => "rem-daily-mix-2",
+        "daily3" => "rem-daily-mix-3",
+        _ => "rem-release-radar"
+    };
+
+    private async Task LoadActiveMixCoverAsync(RemMixDescriptor mix, CancellationToken ct)
+    {
+        if (_disposed || !ShowPlaylistIcons)
+        {
+            return;
+        }
+
+        var url = mix.Tracks.Select(t => t.AlbumCoverUrl).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        try
+        {
+            var bmp = await _webApi.LoadSmallBitmapAsync(url, 160, ct).ConfigureAwait(false);
+            Bitmap? cardBmp = null;
+            var matchingCard = RemMixCards.FirstOrDefault(c => mix.Key.StartsWith(GetMixKeyPrefix(c.Kind), StringComparison.Ordinal));
+            if (matchingCard is not null && !ct.IsCancellationRequested && !_disposed)
+            {
+                cardBmp = await _webApi.LoadSmallBitmapAsync(url, 160, ct).ConfigureAwait(false);
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_disposed || ct.IsCancellationRequested || !ShowPlaylistIcons)
+                {
+                    bmp?.Dispose();
+                    cardBmp?.Dispose();
+                    return;
+                }
+
+                if (bmp is not null)
+                {
+                    var prev = ActiveMixCoverBitmap;
+                    ActiveMixCoverBitmap = bmp;
+                    prev?.Dispose();
+                }
+
+                if (cardBmp is not null)
+                {
+                    matchingCard?.SetCover(cardBmp);
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task LoadRemMixCardCoversAsync(int decodeWidth = 160)
+    {
+        CancelAndDispose(ref _mixCoverCts);
+        if (_disposed || !ShowPlaylistIcons || RemMixCards.Count == 0)
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _mixCoverCts = cts;
+        var cards = RemMixCards.ToList();
+        using var gate = new SemaphoreSlim(3, 3);
+
+        var tasks = cards.Select(async card =>
+        {
+            if (cts.IsCancellationRequested || _disposed || !ShowPlaylistIcons)
+            {
+                return;
+            }
+
+            await gate.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                var key = RemMixGeneratorService.GetCurrentMixCacheKey(card.Kind);
+                var cached = await _database.GetSpotifyCachedMixAsync(key, cts.Token).ConfigureAwait(false);
+                var url = cached?.Tracks.Select(t => t.AlbumCoverUrl).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+                if (string.IsNullOrWhiteSpace(url) || cts.IsCancellationRequested || _disposed || !ShowPlaylistIcons)
+                {
+                    return;
+                }
+
+                var bmp = await _webApi.LoadSmallBitmapAsync(url, decodeWidth, cts.Token).ConfigureAwait(false);
+                if (bmp is not null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_disposed || cts.IsCancellationRequested || !ShowPlaylistIcons)
+                        {
+                            bmp.Dispose();
+                            return;
+                        }
+
+                        card.SetCover(bmp);
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToList();
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
     [RelayCommand]
     private async Task SaveActiveMixToSpotifyAsync()
     {
-        if (!_webApi.IsConnected || CollectionTracks.Count == 0)
+        if (!_webApi.IsConnected || DetailTracks.Count == 0)
         {
             ShowToast("Play or open a mix with tracks first");
             return;
@@ -1371,7 +1689,7 @@ public sealed partial class SpotifyViewModel
             return;
         }
 
-        var uris = CollectionTracks.Select(t => t.Item.Uri).Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
+        var uris = DetailTracks.Select(t => t.Item.Uri).Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
         var (added, addErr) = await _webApi.AddTracksToPlaylistAsync(created.Id, uris, CancellationToken.None);
         if (added)
         {
@@ -1393,14 +1711,20 @@ public sealed partial class SpotifyViewModel
         }
 
         if (!_isRestoringNav) PushCurrentToNavHistory();
+        ReleaseHomeSectionAssetsIfOnHome();
         DeselectPlaylists();
         ActiveDetailPage = SpotifyDetailPage.AlbumDetail;
         ActiveAlbumTitle = fallbackTitle ?? "Album";
         ActiveAlbumSubtitle = "Loading album...";
         FeedMessage = string.Empty;
+        ClearTrackCollection(DetailTracks);
+        var oldAlBmp = ActiveAlbumBitmap;
+        ActiveAlbumBitmap = null;
+        oldAlBmp?.Dispose();
 
         var ct = ResetWorkToken();
         IsBusy = true;
+        ListFadeOpacity = 0.4;
         try
         {
             var albumTask = _webApi.GetAlbumAsync(albumId, ct);
@@ -1420,22 +1744,30 @@ public sealed partial class SpotifyViewModel
                 _ = LoadSingleAlbumCoverBitmapAsync(album.ImageUrl, ct);
             }
 
-            ClearTrackCollection(CollectionTracks);
+            _soloist.RememberTrackMetadata(tracks);
+            ClearTrackCollection(DetailTracks);
             for (var i = 0; i < tracks.Count; i++)
             {
-                CollectionTracks.Add(new SpotifyTrackRowViewModel(i + 1, tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
+                DetailTracks.Add(new SpotifyTrackRowViewModel(i + 1, tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
             }
 
             if (tracks.Count > 0)
             {
-                var rows = CollectionTracks.ToList();
+                var rows = DetailTracks.ToList();
                 _ = SyncRowLikedStatesAsync(rows);
                 if (ShowTrackCovers) _ = LoadRowCoversAsync(rows);
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     [RelayCommand]
@@ -1597,6 +1929,8 @@ public sealed partial class SpotifyViewModel
         if (ok)
         {
             CollectionTracks.Remove(row);
+            _allCollectionRows.Remove(row);
+            OnPropertyChanged(nameof(CollectionFilterSummary));
             row.Dispose();
             ShowToast($"Removed '{row.Title}' from {_activePlaylistItem.Name}");
         }
@@ -1624,6 +1958,7 @@ public sealed partial class SpotifyViewModel
     private async Task SelectExternalPlaylistAsync(SpotifyPlaylistItem playlist)
     {
         if (!_isRestoringNav) PushCurrentToNavHistory();
+        ReleaseHomeSectionAssetsIfOnHome();
         ResetToStandardSection();
         ActiveSection = SpotifyNavSection.Playlist;
         DeselectPlaylists();
@@ -1634,34 +1969,50 @@ public sealed partial class SpotifyViewModel
         CollectionTitle = playlist.Name;
         CollectionSubtitle = $"{playlist.OwnerName} · {playlist.TrackCount} tracks";
         FeedMessage = string.Empty;
+        CollectionFilterQuery = string.Empty;
+        CollectionPaginationStatus = string.Empty;
+        ClearAllCollectionRows();
 
         var ct = ResetWorkToken();
+        ListFadeOpacity = 0.4;
         IsBusy = true;
         try
         {
-            var res = await _webApi.GetPlaylistItemsAsync(playlist.Id, playlist.Uri, ct);
-            ClearTrackCollection(CollectionTracks);
-            for (var i = 0; i < res.Tracks.Count; i++)
-            {
-                CollectionTracks.Add(new SpotifyTrackRowViewModel(i + 1, res.Tracks[i], ShowTrackCovers, PlayTrackItemAsync, ToggleRowLikeAsync));
-            }
+            const int pageSize = 50;
+            var firstPage = await _webApi.GetPlaylistItemsPageAsync(playlist.Id, playlist.Uri, offset: 0, limit: pageSize, ct);
+            if (_disposed || ct.IsCancellationRequested) return;
 
-            if (res.Tracks.Count == 0)
+            if (firstPage.Tracks.Count == 0)
             {
-                FeedMessage = res.AccessRestricted
+                FeedMessage = firstPage.AccessRestricted
                     ? "Spotify restricts reading tracks for this playlist directly, but you can still click 'Play All'."
                     : "No tracks found.";
+                return;
             }
-            else
+
+            AppendCollectionPageRows(firstPage.Tracks, isLikedList: false);
+            ListFadeOpacity = 1.0;
+
+            var firstRows = CollectionTracks.ToList();
+            _ = SyncRowLikedStatesAsync(firstRows);
+            if (ShowTrackCovers) _ = LoadRowCoversAsync(firstRows);
+
+            if (firstPage.HasMore)
             {
-                var rows = CollectionTracks.ToList();
-                _ = SyncRowLikedStatesAsync(rows);
-                if (ShowTrackCovers) _ = LoadRowCoversAsync(rows);
+                CollectionPaginationStatus = $"Loaded {_allCollectionRows.Count} / {(firstPage.Total > 0 ? firstPage.Total.ToString() : "?")} tracks...";
+                _ = LoadRemainingPlaylistPagesAsync(playlist.Id, playlist.Uri, firstPage.Tracks.Count, firstPage.Total, ct);
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { FeedMessage = ex.Message; }
-        finally { if (!_disposed) IsBusy = false; }
+        finally
+        {
+            if (!_disposed)
+            {
+                IsBusy = false;
+                ListFadeOpacity = 1.0;
+            }
+        }
     }
 
     private async Task RecordPlayInHistoryAsync(GoLibrespotTrack track)
@@ -1680,64 +2031,136 @@ public sealed partial class SpotifyViewModel
         }
     }
 
-    private async Task LoadArtistCardPhotosAsync(List<SpotifyArtistCardViewModel> cards)
+    private async Task LoadArtistCardPhotosAsync(List<SpotifyArtistCardViewModel> cards, int decodeWidth = 120)
     {
         CancelAndDispose(ref _detailCoverCts);
         if (_disposed || cards.Count == 0) return;
 
         var cts = new CancellationTokenSource();
         _detailCoverCts = cts;
-        foreach (var card in cards)
+        using var gate = new SemaphoreSlim(4, 4);
+        var tasks = cards.Select(async card =>
         {
-            if (cts.IsCancellationRequested || _disposed) break;
-            if (string.IsNullOrWhiteSpace(card.Item.ImageUrl)) continue;
-            var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, 120, cts.Token);
-            if (bmp is not null)
+            if (cts.IsCancellationRequested || _disposed || string.IsNullOrWhiteSpace(card.Item.ImageUrl))
             {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (_disposed || cts.IsCancellationRequested) bmp.Dispose();
-                    else card.SetPhoto(bmp);
-                });
+                return;
             }
+
+            await gate.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                if (cts.IsCancellationRequested || _disposed) return;
+                var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, decodeWidth, cts.Token).ConfigureAwait(false);
+                if (bmp is not null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_disposed || cts.IsCancellationRequested) bmp.Dispose();
+                        else card.SetPhoto(bmp);
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToList();
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
-    private async Task LoadAlbumCardCoversAsync(List<SpotifyAlbumCardViewModel> cards)
+    private async Task LoadAlbumCardCoversAsync(List<SpotifyAlbumCardViewModel> cards, CancellationToken ct = default, int decodeWidth = 120)
     {
         if (_disposed || cards.Count == 0) return;
-        foreach (var card in cards)
+        using var gate = new SemaphoreSlim(4, 4);
+        var tasks = cards.Select(async card =>
         {
-            if (_disposed || ActiveDetailPage == SpotifyDetailPage.None && !IsSearchSection) break;
-            if (string.IsNullOrWhiteSpace(card.Item.ImageUrl)) continue;
-            var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, 120, CancellationToken.None);
-            if (bmp is not null)
+            if (ct.IsCancellationRequested || _disposed || (ActiveDetailPage == SpotifyDetailPage.None && !IsSearchSection && !IsHomeSection) || string.IsNullOrWhiteSpace(card.Item.ImageUrl))
             {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (_disposed) bmp.Dispose();
-                    else card.SetCover(bmp);
-                });
+                return;
             }
+
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                if (ct.IsCancellationRequested || _disposed || (ActiveDetailPage == SpotifyDetailPage.None && !IsSearchSection && !IsHomeSection)) return;
+                var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, decodeWidth, ct).ConfigureAwait(false);
+                if (bmp is not null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_disposed || ct.IsCancellationRequested) bmp.Dispose();
+                        else card.SetCover(bmp);
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToList();
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
-    private async Task LoadPlaylistCardCoversAsync(List<SpotifyPlaylistCardViewModel> cards)
+    private async Task LoadPlaylistCardCoversAsync(List<SpotifyPlaylistCardViewModel> cards, CancellationToken ct = default)
     {
         if (_disposed || cards.Count == 0) return;
-        foreach (var card in cards)
+        using var gate = new SemaphoreSlim(4, 4);
+        var tasks = cards.Select(async card =>
         {
-            if (_disposed || !IsSearchSection) break;
-            if (string.IsNullOrWhiteSpace(card.Item.ImageUrl)) continue;
-            var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, 120, CancellationToken.None);
-            if (bmp is not null)
+            if (ct.IsCancellationRequested || _disposed || !IsSearchSection || string.IsNullOrWhiteSpace(card.Item.ImageUrl))
             {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (_disposed) bmp.Dispose();
-                    else card.SetCover(bmp);
-                });
+                return;
             }
+
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                if (ct.IsCancellationRequested || _disposed || !IsSearchSection) return;
+                var bmp = await _webApi.LoadSmallBitmapAsync(card.Item.ImageUrl, 120, ct).ConfigureAwait(false);
+                if (bmp is not null)
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_disposed || ct.IsCancellationRequested) bmp.Dispose();
+                        else card.SetCover(bmp);
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToList();
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -1786,6 +2209,7 @@ public sealed partial class SpotifyViewModel
     private void ClearDetailCollections()
     {
         CancelAndDispose(ref _detailCoverCts);
+        ClearTrackCollection(DetailTracks);
         ClearArtistCards(SimilarArtists);
         ClearArtistCards(TopArtists);
         ClearAlbumCards(ArtistAlbums);
@@ -1801,6 +2225,10 @@ public sealed partial class SpotifyViewModel
         var oldAlbumBmp = ActiveAlbumBitmap;
         ActiveAlbumBitmap = null;
         oldAlbumBmp?.Dispose();
+
+        var oldMixBmp = ActiveMixCoverBitmap;
+        ActiveMixCoverBitmap = null;
+        oldMixBmp?.Dispose();
     }
 
     private void DisposeExtendedAssets()
@@ -1819,12 +2247,15 @@ public sealed partial class SpotifyViewModel
             return;
         }
 
+        ReleaseHomeSectionAssets(clearFypRows: true);
+        ClearAllCollectionRows();
         ClearTrackCollection(SearchTracks);
         DisposeExtendedAssets();
+        ClearUnusedSharedCovers(null);
         MemoryTrimService.ScheduleTrim();
     }
 
-    private void ClearUnusedSharedCovers(ObservableCollection<SpotifyTrackRowViewModel> cleared)
+    private void ClearUnusedSharedCovers(ObservableCollection<SpotifyTrackRowViewModel>? cleared)
     {
         if (_sharedRowCovers.Count == 0)
         {
@@ -1832,25 +2263,36 @@ public sealed partial class SpotifyViewModel
         }
 
         var keep = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var col in new[] { FypTracks, SearchTracks, CollectionTracks })
+        foreach (var col in new[] { FypTracks, HomeRecentTracks, SearchTracks, CollectionTracks, DetailTracks })
         {
-            if (ReferenceEquals(col, cleared))
+            if (cleared is not null && ReferenceEquals(col, cleared))
             {
                 continue;
             }
 
             foreach (var r in col)
             {
-                if (!string.IsNullOrWhiteSpace(r.Item.AlbumCoverUrl))
+                if (!string.IsNullOrWhiteSpace(r.CoverCacheKey))
                 {
-                    keep.Add(r.Item.AlbumCoverUrl);
+                    keep.Add(r.CoverCacheKey);
                 }
             }
         }
 
-        foreach (var url in _sharedRowCovers.Keys.ToList())
+        if (!ReferenceEquals(cleared, CollectionTracks))
         {
-            if (!keep.Contains(url) && _sharedRowCovers.Remove(url, out var bmp))
+            foreach (var r in _allCollectionRows)
+            {
+                if (!string.IsNullOrWhiteSpace(r.CoverCacheKey))
+                {
+                    keep.Add(r.CoverCacheKey);
+                }
+            }
+        }
+
+        foreach (var key in _sharedRowCovers.Keys.ToList())
+        {
+            if (!keep.Contains(key) && _sharedRowCovers.Remove(key, out var bmp))
             {
                 bmp.Dispose();
             }

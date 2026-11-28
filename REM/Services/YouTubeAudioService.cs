@@ -1,6 +1,8 @@
 using Avalonia.Media.Imaging;
 using REM.Models;
 using YoutubeExplode;
+using YoutubeExplode.Channels;
+using YoutubeExplode.Common;
 using YoutubeExplode.Search;
 using YoutubeExplode.Videos.Streams;
 
@@ -162,9 +164,36 @@ public sealed class YouTubeAudioService : IDisposable
 
     public void ReleaseIdleClient() => _client = null;
 
+    public static string NormalizeMediaInputUrl(string input)
+    {
+        var trimmed = input.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return trimmed;
+        }
+
+        if (!trimmed.Contains("://", StringComparison.Ordinal))
+        {
+            if (trimmed.StartsWith("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("www.youtube.com/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("m.youtube.com/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("music.youtube.com/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("www.twitch.tv/", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"https://{trimmed}";
+            }
+        }
+
+        return trimmed;
+    }
+
     public static bool IsYouTubeUrl(string input)
     {
-        if (!Uri.TryCreate(input.Trim(), UriKind.Absolute, out var uri))
+        var normalized = NormalizeMediaInputUrl(input);
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
             return false;
         }
@@ -175,9 +204,59 @@ public sealed class YouTubeAudioService : IDisposable
                host.EndsWith(".youtu.be", StringComparison.Ordinal);
     }
 
+    public static bool IsYouTubePlaylistUrl(string input)
+    {
+        if (!IsYouTubeUrl(input))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeMediaInputUrl(input);
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath.TrimEnd('/');
+        if (string.Equals(path, "/playlist", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var query = uri.Query;
+        return query.Contains("list=", StringComparison.OrdinalIgnoreCase) &&
+               !query.Contains("v=", StringComparison.OrdinalIgnoreCase) &&
+               !path.StartsWith("/shorts/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsYouTubeChannelUrl(string input)
+    {
+        if (!IsYouTubeUrl(input))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeMediaInputUrl(input);
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath;
+        return path.StartsWith("/@", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/channel/", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/c/", StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith("/user/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string? TryExtractYouTubeVideoId(string? url) =>
+        string.IsNullOrWhiteSpace(url) ? null : YoutubeExplode.Videos.VideoId.TryParse(NormalizeMediaInputUrl(url))?.Value;
+
     public static bool IsTwitchUrl(string input)
     {
-        if (!Uri.TryCreate(input.Trim(), UriKind.Absolute, out var uri))
+        var normalized = NormalizeMediaInputUrl(input);
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
             return false;
         }
@@ -190,6 +269,162 @@ public sealed class YouTubeAudioService : IDisposable
         SearchVideosAsync(query, 5, cancellationToken);
 
     public YouTubeSearchPager CreateSearchPager(string query) => new(Client, _ytDlp, query);
+
+    public async Task<List<YouTubeChannelItem>> SearchChannelsAsync(
+        string query,
+        int maxResults,
+        CancellationToken cancellationToken)
+    {
+        var list = new List<YouTubeChannelItem>();
+        if (string.IsNullOrWhiteSpace(query) || _disposed)
+        {
+            return list;
+        }
+
+        try
+        {
+            var cap = Math.Clamp(maxResults, 1, 20);
+            await foreach (var ch in Client.Search.GetChannelsAsync(query.Trim(), cancellationToken).ConfigureAwait(false))
+            {
+                var thumb = ch.Thumbnails
+                    .OrderByDescending(t => t.Resolution.Area)
+                    .FirstOrDefault()?.Url;
+                list.Add(new YouTubeChannelItem(ch.Id.Value, ch.Title, ch.Url, thumb));
+                if (list.Count >= cap)
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+
+        return list;
+    }
+
+    public async Task<List<YouTubeSearchItem>> FetchPlaylistVideosAsync(
+        string playlistUrl,
+        int maxResults,
+        CancellationToken cancellationToken)
+    {
+        var normalized = NormalizeMediaInputUrl(playlistUrl);
+        var cap = Math.Clamp(maxResults, 1, 60);
+        var list = new List<YouTubeSearchItem>();
+
+        try
+        {
+            await foreach (var video in Client.Playlists.GetVideosAsync(normalized, cancellationToken).ConfigureAwait(false))
+            {
+                var vid = video.Id.Value;
+                list.Add(new YouTubeSearchItem(
+                    vid,
+                    video.Title,
+                    video.Author.ChannelTitle,
+                    video.Duration,
+                    video.Url,
+                    $"https://i.ytimg.com/vi/{vid}/mqdefault.jpg"));
+                if (list.Count >= cap)
+                {
+                    break;
+                }
+            }
+
+            if (list.Count > 0)
+            {
+                return list;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+
+        var fallback = await _ytDlp.FetchYouTubeFeedAsync(normalized, string.Empty, cap, cancellationToken, 1).ConfigureAwait(false);
+        return fallback.Items;
+    }
+
+    public async Task<(string ChannelTitle, List<YouTubeSearchItem> Videos)> FetchChannelUploadsAsync(
+        string channelUrlOrId,
+        int maxResults,
+        CancellationToken cancellationToken)
+    {
+        var normalized = NormalizeMediaInputUrl(channelUrlOrId);
+        var cap = Math.Clamp(maxResults, 1, 60);
+        var channelTitle = "YouTube Channel";
+        var videos = new List<YouTubeSearchItem>();
+
+        try
+        {
+            Channel? channel = null;
+            if (ChannelId.TryParse(normalized) is { } chId)
+            {
+                channel = await Client.Channels.GetAsync(chId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (ChannelHandle.TryParse(normalized) is { } handle)
+            {
+                channel = await Client.Channels.GetByHandleAsync(handle, cancellationToken).ConfigureAwait(false);
+            }
+            else if (ChannelSlug.TryParse(normalized) is { } slug)
+            {
+                channel = await Client.Channels.GetBySlugAsync(slug, cancellationToken).ConfigureAwait(false);
+            }
+            else if (UserName.TryParse(normalized) is { } user)
+            {
+                channel = await Client.Channels.GetByUserAsync(user, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (channel is not null)
+            {
+                channelTitle = channel.Title;
+                await foreach (var v in Client.Channels.GetUploadsAsync(channel.Id, cancellationToken).ConfigureAwait(false))
+                {
+                    var vid = v.Id.Value;
+                    videos.Add(new YouTubeSearchItem(
+                        vid,
+                        v.Title,
+                        string.IsNullOrWhiteSpace(v.Author.ChannelTitle) ? channelTitle : v.Author.ChannelTitle,
+                        v.Duration,
+                        v.Url,
+                        $"https://i.ytimg.com/vi/{vid}/mqdefault.jpg"));
+                    if (videos.Count >= cap)
+                    {
+                        break;
+                    }
+                }
+
+                if (videos.Count > 0)
+                {
+                    return (channelTitle, videos);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+        }
+
+        var uploadsUrl = normalized.StartsWith("UC", StringComparison.OrdinalIgnoreCase) && !normalized.Contains("://", StringComparison.Ordinal)
+            ? $"https://www.youtube.com/channel/{normalized}/videos"
+            : (normalized.EndsWith("/videos", StringComparison.OrdinalIgnoreCase) ? normalized : $"{normalized.TrimEnd('/')}/videos");
+        var ytFallback = await _ytDlp.FetchYouTubeFeedAsync(uploadsUrl, string.Empty, cap, cancellationToken, 1).ConfigureAwait(false);
+        if (ytFallback.Items.Count > 0 && channelTitle == "YouTube Channel")
+        {
+            channelTitle = ytFallback.Items[0].Channel;
+        }
+
+        return (channelTitle, ytFallback.Items);
+    }
 
     public async Task<List<YouTubeSearchItem>> SearchVideosAsync(
         string query,

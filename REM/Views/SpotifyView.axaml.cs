@@ -21,6 +21,7 @@ public partial class SpotifyView : UserControl
 
     private SpotifyViewModel? _boundVm;
     private readonly DispatcherTimer _scrollTimer;
+    private readonly DispatcherTimer _lyricsBarTimer;
     private readonly ScrollAnim _drawerAnim;
     private readonly ScrollAnim _fullscreenAnim;
     private DateTimeOffset _userScrollPauseUntil = DateTimeOffset.MinValue;
@@ -35,6 +36,9 @@ public partial class SpotifyView : UserControl
         _scrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _scrollTimer.Tick += OnScrollAnimationTick;
 
+        _lyricsBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.2) };
+        _lyricsBarTimer.Tick += OnLyricsBarIdleTick;
+
         LyricsScrollViewer.AddHandler(PointerWheelChangedEvent, OnLyricsPointerWheel, RoutingStrategies.Tunnel);
         FullscreenLyricsScrollViewer.AddHandler(PointerWheelChangedEvent, OnLyricsPointerWheel, RoutingStrategies.Tunnel);
 
@@ -43,9 +47,16 @@ public partial class SpotifyView : UserControl
         SeekSlider.AddHandler(PointerCaptureLostEvent, OnSeekPointerCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
         SeekSlider.PropertyChanged += OnSeekSliderPropertyChanged;
 
+        BottomPlayerBar.PointerEntered += OnLyricsPlayerZoneEntered;
+        BottomPlayerBar.PointerMoved += OnLyricsPlayerZoneMoved;
+        BottomPlayerBar.PointerExited += OnLyricsPlayerZoneExited;
+        LyricsPlayerHoverZone.PointerEntered += OnLyricsPlayerZoneEntered;
+        LyricsPlayerHoverZone.PointerMoved += OnLyricsPlayerZoneMoved;
+
         AddHandler(KeyDownEvent, OnViewKeyDown, RoutingStrategies.Tunnel);
 
         DataContextChanged += OnViewDataContextChanged;
+        AttachedToVisualTree += OnViewAttachedToVisualTree;
         DetachedFromVisualTree += (_, _) => UnsubscribeVm();
     }
 
@@ -71,18 +82,41 @@ public partial class SpotifyView : UserControl
         _scrollTimer.Stop();
     }
 
+    private void OnViewAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        BindViewModel(DataContext as SpotifyViewModel);
+        UpdateLyricsBarAutoHideMode();
+    }
+
     private void OnViewDataContextChanged(object? sender, EventArgs e)
     {
-        UnsubscribeVm();
         if (DataContext is SpotifyViewModel vm)
         {
-            _boundVm = vm;
-            vm.ActiveLyricChanged += OnActiveLyricChanged;
+            BindViewModel(vm);
+            UpdateLyricsBarAutoHideMode();
         }
         else if (DataContext is null)
         {
+            UnsubscribeVm();
             SeekSlider.PropertyChanged -= OnSeekSliderPropertyChanged;
             _scrollTimer.Tick -= OnScrollAnimationTick;
+            _lyricsBarTimer.Tick -= OnLyricsBarIdleTick;
+        }
+    }
+
+    private void BindViewModel(SpotifyViewModel? vm)
+    {
+        if (ReferenceEquals(_boundVm, vm))
+        {
+            return;
+        }
+
+        UnsubscribeVm();
+        if (vm is not null)
+        {
+            _boundVm = vm;
+            vm.ActiveLyricChanged += OnActiveLyricChanged;
+            vm.PropertyChanged += OnBoundVmPropertyChanged;
         }
     }
 
@@ -92,11 +126,99 @@ public partial class SpotifyView : UserControl
         _drawerAnim.Active = false;
         _fullscreenAnim.Active = false;
         _scrollTimer.Stop();
+        _lyricsBarTimer.Stop();
+        SetBottomPlayerBarVisible(true);
         if (_boundVm is not null)
         {
             _boundVm.ActiveLyricChanged -= OnActiveLyricChanged;
+            _boundVm.PropertyChanged -= OnBoundVmPropertyChanged;
             _boundVm = null;
         }
+    }
+
+    private void OnBoundVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SpotifyViewModel.IsLyricsFullscreen))
+        {
+            UpdateLyricsBarAutoHideMode();
+        }
+    }
+
+    private void UpdateLyricsBarAutoHideMode()
+    {
+        if (_boundVm is { IsLyricsFullscreen: true })
+        {
+            SetBottomPlayerBarVisible(true);
+            _lyricsBarTimer.Stop();
+            _lyricsBarTimer.Start();
+        }
+        else
+        {
+            _lyricsBarTimer.Stop();
+            SetBottomPlayerBarVisible(true);
+        }
+    }
+
+    private void OnLyricsPlayerZoneEntered(object? sender, PointerEventArgs e)
+    {
+        if (_boundVm is not { IsLyricsFullscreen: true })
+        {
+            return;
+        }
+
+        SetBottomPlayerBarVisible(true);
+        _lyricsBarTimer.Stop();
+        _lyricsBarTimer.Start();
+    }
+
+    private void OnLyricsPlayerZoneMoved(object? sender, PointerEventArgs e)
+    {
+        if (_boundVm is not { IsLyricsFullscreen: true })
+        {
+            return;
+        }
+
+        if (BottomPlayerBar.Classes.Contains("lyrics-autohide-hidden"))
+        {
+            SetBottomPlayerBarVisible(true);
+        }
+
+        _lyricsBarTimer.Stop();
+        _lyricsBarTimer.Start();
+    }
+
+    private void OnLyricsPlayerZoneExited(object? sender, PointerEventArgs e)
+    {
+        if (_boundVm is not { IsLyricsFullscreen: true })
+        {
+            return;
+        }
+
+        _lyricsBarTimer.Stop();
+        _lyricsBarTimer.Start();
+    }
+
+    private void OnLyricsBarIdleTick(object? sender, EventArgs e)
+    {
+        if (_boundVm is not { IsLyricsFullscreen: true })
+        {
+            _lyricsBarTimer.Stop();
+            SetBottomPlayerBarVisible(true);
+            return;
+        }
+
+        if (_isScrubbing || BottomPlayerBar.IsPointerOver || LyricsPlayerHoverZone.IsPointerOver)
+        {
+            return;
+        }
+
+        _lyricsBarTimer.Stop();
+        SetBottomPlayerBarVisible(false);
+    }
+
+    private void SetBottomPlayerBarVisible(bool visible)
+    {
+        BottomPlayerBar.Classes.Set("lyrics-autohide-hidden", !visible);
     }
 
     private void OnSeekPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -196,36 +318,39 @@ public partial class SpotifyView : UserControl
     {
         const double durationMs = 380.0;
         var now = DateTimeOffset.UtcNow;
-        var anyActive = false;
-
-        foreach (var anim in new[] { _drawerAnim, _fullscreenAnim })
+        var anyActive = StepScrollAnim(_drawerAnim, now, durationMs);
+        if (StepScrollAnim(_fullscreenAnim, now, durationMs))
         {
-            if (!anim.Active || !anim.Viewer.IsVisible)
-            {
-                anim.Active = false;
-                continue;
-            }
-
-            var elapsed = (now - anim.StartTime).TotalMilliseconds;
-            var t = Math.Clamp(elapsed / durationMs, 0, 1);
-            var eased = 1.0 - Math.Pow(1.0 - t, 3);
-            var y = anim.StartY + ((anim.TargetY - anim.StartY) * eased);
-            anim.Viewer.Offset = new Vector(anim.Viewer.Offset.X, y);
-
-            if (t >= 1.0)
-            {
-                anim.Active = false;
-            }
-            else
-            {
-                anyActive = true;
-            }
+            anyActive = true;
         }
 
         if (!anyActive)
         {
             _scrollTimer.Stop();
         }
+    }
+
+    private static bool StepScrollAnim(ScrollAnim anim, DateTimeOffset now, double durationMs)
+    {
+        if (!anim.Active || !anim.Viewer.IsVisible)
+        {
+            anim.Active = false;
+            return false;
+        }
+
+        var elapsed = (now - anim.StartTime).TotalMilliseconds;
+        var t = Math.Clamp(elapsed / durationMs, 0, 1);
+        var eased = 1.0 - Math.Pow(1.0 - t, 3);
+        var y = anim.StartY + ((anim.TargetY - anim.StartY) * eased);
+        anim.Viewer.Offset = new Vector(anim.Viewer.Offset.X, y);
+
+        if (t >= 1.0)
+        {
+            anim.Active = false;
+            return false;
+        }
+
+        return true;
     }
 
     private void OnTrackRowContextRequested(object? sender, ContextRequestedEventArgs e)
@@ -366,5 +491,20 @@ public partial class SpotifyView : UserControl
         menu.Items.Add(shareItem);
 
         menu.Open(ctrl);
+    }
+
+    private void OnShelfScrollLeftClick(object? sender, RoutedEventArgs e) => ScrollShelfBy(sender, -460);
+
+    private void OnShelfScrollRightClick(object? sender, RoutedEventArgs e) => ScrollShelfBy(sender, 460);
+
+    private void ScrollShelfBy(object? sender, double deltaX)
+    {
+        if (sender is Control { Tag: string targetName } &&
+            this.FindControl<ScrollViewer>(targetName) is { } sv)
+        {
+            var maxX = Math.Max(0, sv.Extent.Width - sv.Viewport.Width);
+            var nextX = Math.Clamp(sv.Offset.X + deltaX, 0, maxX);
+            sv.Offset = new Vector(nextX, sv.Offset.Y);
+        }
     }
 }

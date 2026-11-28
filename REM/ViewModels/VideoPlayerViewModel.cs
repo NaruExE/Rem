@@ -299,7 +299,12 @@ public sealed partial class VideoPlayerViewModel : ObservableObject, IDisposable
     private string _durationDisplay = "0:00";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VolumeDisplay))]
+    [NotifyPropertyChangedFor(nameof(IsVolumeBoosted))]
     private int _volume = 80;
+
+    public string VolumeDisplay => $"{Volume}%";
+    public bool IsVolumeBoosted => Volume > 100;
 
     partial void OnVolumeChanged(int value)
     {
@@ -534,7 +539,7 @@ public sealed partial class VideoPlayerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        Volume = Math.Clamp(Volume + delta, 0, 100);
+        Volume = Math.Clamp(Volume + delta, 0, 200);
     }
 
     public void StepSpeed(int direction)

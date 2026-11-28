@@ -41,20 +41,35 @@ public sealed class LastFmService : IDisposable
             seen.Add(BuildKey(GetPrimaryArtist(seed.Artists), seed.Name));
         }
 
-        foreach (var seed in seeds.Take(4))
+        var seedList = seeds.Take(4).ToList();
+        using var throttle = new SemaphoreSlim(3, 3);
+        var perSeedLists = await Task.WhenAll(seedList.Select(async seed =>
         {
-            if (recommendations.Count >= maxResults || cancellationToken.IsCancellationRequested)
+            await throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                break;
-            }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new List<LastFmRecommendation>();
+                }
 
-            var artist = GetPrimaryArtist(seed.Artists);
-            var similar = await GetSimilarTracksAsync(artist, seed.Name, apiKey, 6, cancellationToken).ConfigureAwait(false);
-            if (similar.Count == 0)
+                var artist = GetPrimaryArtist(seed.Artists);
+                var similar = await GetSimilarTracksAsync(artist, seed.Name, apiKey, 6, cancellationToken).ConfigureAwait(false);
+                if (similar.Count == 0)
+                {
+                    similar = await GetSimilarArtistTopTracksAsync(artist, apiKey, 4, cancellationToken).ConfigureAwait(false);
+                }
+
+                return similar;
+            }
+            finally
             {
-                similar = await GetSimilarArtistTopTracksAsync(artist, apiKey, 4, cancellationToken).ConfigureAwait(false);
+                throttle.Release();
             }
+        })).ConfigureAwait(false);
 
+        foreach (var similar in perSeedLists)
+        {
             foreach (var rec in similar)
             {
                 if (seen.Add(BuildKey(rec.Artist, rec.Title)))
@@ -62,7 +77,7 @@ public sealed class LastFmService : IDisposable
                     recommendations.Add(rec);
                     if (recommendations.Count >= maxResults)
                     {
-                        break;
+                        return recommendations;
                     }
                 }
             }

@@ -255,6 +255,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
     private int _lastManagedTenths = -1;
     private double _lastTrimBaselineMb;
     private DateTimeOffset _lastAutoTrimUtc = DateTimeOffset.UtcNow;
+    private System.Threading.Timer? _backgroundTrimTimer;
     private bool _isWindowActive = true;
     private bool _disposed;
 
@@ -294,6 +295,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         _currentProcess = Process.GetCurrentProcess();
         MiniPlayer = new HeadlessMiniPlayerViewModel(
             _moduleManager,
+            _database,
             _soloist,
             _spotifyWebApi,
             _moduleManager.AudioEngine,
@@ -598,7 +600,14 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             _soloist,
             _spotifyWebApi,
             _lastFm,
-            id => _moduleManager.NotifyModuleSettingsChanged(id),
+            id =>
+            {
+                _moduleManager.NotifyModuleSettingsChanged(id);
+                if (string.Equals(id, "spotify", StringComparison.Ordinal))
+                {
+                    MiniPlayer.RefreshDisplaySettings();
+                }
+            },
             async target =>
             {
                 var removed = await RemoveModuleFromProfileAsync(target);
@@ -789,6 +798,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _ramTimer.Stop();
+        StopBackgroundTrimTimer();
         _moduleManager.OpenModuleSettingsRequested = null;
         _moduleManager.ModuleStateChanged -= OnAnyModuleStateChanged;
         CloseModuleSettings();
@@ -1193,16 +1203,19 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
         }
 
         _isWindowActive = isVisibleAndNotMinimized;
+        MiniPlayer.SetWindowActive(isVisibleAndNotMinimized);
         if (!isVisibleAndNotMinimized)
         {
             _ramTimer.Stop();
             var prevWp = WallpaperBitmap;
             WallpaperBitmap = null;
             prevWp?.Dispose();
+            StartBackgroundTrimTimer();
             ScheduleTrimAndRefreshStats();
         }
         else
         {
+            StopBackgroundTrimTimer();
             RefreshWallpaper();
             UpdateBandwidthStats();
             UpdateRamStats();
@@ -1211,6 +1224,34 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
                 _ramTimer.Start();
             }
         }
+    }
+
+    private void StartBackgroundTrimTimer()
+    {
+        if (_disposed || _backgroundTrimTimer is not null)
+        {
+            return;
+        }
+
+        _backgroundTrimTimer = new System.Threading.Timer(_ =>
+        {
+            if (_disposed || _isWindowActive)
+            {
+                return;
+            }
+
+            var anyHeadless = _moduleManager.AllModules.Any(m => m.State == ModuleState.RunningHeadless);
+            if (anyHeadless)
+            {
+                MemoryTrimService.TrimNow(trimOsWorkingSet: true);
+            }
+        }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+    }
+
+    private void StopBackgroundTrimTimer()
+    {
+        var timer = Interlocked.Exchange(ref _backgroundTrimTimer, null);
+        timer?.Dispose();
     }
 
     private void ScheduleTrimAndRefreshStats()
@@ -1293,7 +1334,7 @@ public sealed partial class DashboardViewModel : ObservableObject, IDisposable
             {
                 _lastTrimBaselineMb = 0;
                 UpdateRamStats();
-            }), trimOsWorkingSet: false);
+            }), trimOsWorkingSet: true);
         }
     }
 

@@ -55,3 +55,9 @@ public sealed record TwitchStreamsPage(
     List<TwitchLiveStream> Streams,
     string? NextCursor);
 
+public sealed record YouTubeChannelItem(
+    string ChannelId,
+    string Title,
+    string Url,
+    string? ThumbnailUrl = null);
+

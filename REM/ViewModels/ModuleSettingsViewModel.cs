@@ -37,6 +37,16 @@ public sealed record RemArtPoseOption(string FileName, string Label)
     public override string ToString() => Label;
 }
 
+public sealed record SpotifyHomeLayoutOption(string Key, string Label)
+{
+    public override string ToString() => Label;
+}
+
+public sealed record SpotifyHomeCoverQualityOption(int DecodeWidth, string Label)
+{
+    public override string ToString() => Label;
+}
+
 public sealed partial class PinnedYouTubeTopicRowViewModel : ObservableObject
 {
     private readonly Action<PinnedYouTubeTopicRowViewModel> _onRemove;
@@ -99,6 +109,20 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         new(2048, "2 GB Shared"),
         new(5120, "5 GB Shared"),
         new(0, "Unlimited (0)")
+    ];
+
+    private static readonly SpotifyHomeLayoutOption[] AllSpotifyHomeLayoutOptions =
+    [
+        new("shelves", "Horizontal Shelves (Modern)"),
+        new("classic", "Classic List (Old Style · Lowest RAM)")
+    ];
+
+    private static readonly SpotifyHomeCoverQualityOption[] AllSpotifyHomeCoverQualityOptions =
+    [
+        new(96, "Low (96px · Lowest RAM)"),
+        new(160, "Balanced (160px · Recommended)"),
+        new(240, "High (240px · Crisp)"),
+        new(300, "Sharp (300px · Highest Quality)")
     ];
 
     private static readonly RemArtPoseOption[] AllRemPoseOptions =
@@ -212,6 +236,7 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
 
             ShowSpotifyPlaylistIcons = ReadBool(DatabaseService.KeySpotifyShowPlaylistIcons, true);
             ShowSpotifyTrackCovers = ReadBool(DatabaseService.KeySpotifyShowTrackCovers, true);
+            ShowSpotifyPlayBarCover = ReadBool(DatabaseService.KeySpotifyShowPlayBarCover, true);
             ShowSpotifyAmbientGlow = ReadBool(DatabaseService.KeySpotifyShowAmbientGlow, true);
             ShowSpotifyRemArt = ReadBool(DatabaseService.KeySpotifyShowRemArt, true);
             var savedPose = _database.GetSetting(DatabaseService.KeySpotifyRemArtFile);
@@ -223,6 +248,16 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
             SelectedSpotifyRemPose = AllRemPoseOptions.FirstOrDefault(o =>
                     string.Equals(o.FileName, savedPose, StringComparison.OrdinalIgnoreCase))
                 ?? AllRemPoseOptions[0];
+
+            var savedLayout = _database.GetSetting(DatabaseService.KeySpotifyHomeLayout);
+            SelectedSpotifyHomeLayout = AllSpotifyHomeLayoutOptions.FirstOrDefault(o =>
+                    string.Equals(o.Key, savedLayout, StringComparison.OrdinalIgnoreCase))
+                ?? AllSpotifyHomeLayoutOptions[0];
+
+            var savedQualityRaw = _database.GetSetting(DatabaseService.KeySpotifyHomeCoverQuality);
+            var savedQualityWidth = int.TryParse(savedQualityRaw, out var parsedWidth) ? parsedWidth : 160;
+            SelectedSpotifyHomeCoverQuality = AllSpotifyHomeCoverQualityOptions.FirstOrDefault(o => o.DecodeWidth == savedQualityWidth)
+                ?? AllSpotifyHomeCoverQualityOptions[1];
             _suppressSave = false;
 
             var soloistPath = _soloist.ResolveExecutablePath();
@@ -245,6 +280,8 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
     public IReadOnlyList<AudioQualityOption> AudioQualityOptions => AllAudioQualityOptions;
     public IReadOnlyList<SpotifyCacheSizeOption> SpotifyCacheOptions => AllSpotifyCacheOptions;
     public IReadOnlyList<RemArtPoseOption> SpotifyRemPoseOptions => AllRemPoseOptions;
+    public IReadOnlyList<SpotifyHomeLayoutOption> SpotifyHomeLayoutOptions => AllSpotifyHomeLayoutOptions;
+    public IReadOnlyList<SpotifyHomeCoverQualityOption> SpotifyHomeCoverQualityOptions => AllSpotifyHomeCoverQualityOptions;
 
     public string CurrentStateLabel => _module.State switch
     {
@@ -353,10 +390,22 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
     private bool _showSpotifyTrackCovers = true;
 
     [ObservableProperty]
+    private bool _showSpotifyPlayBarCover = true;
+
+    [ObservableProperty]
     private bool _showSpotifyAmbientGlow = true;
 
     [ObservableProperty]
     private bool _showSpotifyRemArt = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSpotifyShelvesLayoutSelected))]
+    private SpotifyHomeLayoutOption? _selectedSpotifyHomeLayout;
+
+    public bool IsSpotifyShelvesLayoutSelected => SelectedSpotifyHomeLayout?.Key != "classic";
+
+    [ObservableProperty]
+    private SpotifyHomeCoverQualityOption? _selectedSpotifyHomeCoverQuality;
 
     [ObservableProperty]
     private RemArtPoseOption? _selectedSpotifyRemPose;
@@ -459,6 +508,14 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         _onSettingsApplied(ModuleId);
     }
 
+    partial void OnShowSpotifyPlayBarCoverChanged(bool value)
+    {
+        if (_suppressSave) return;
+        _database.SaveSetting(DatabaseService.KeySpotifyShowPlayBarCover, value.ToString());
+        _actionLog.Log("Spotify", $"Spotify play bar cover art set to {value}.");
+        _onSettingsApplied(ModuleId);
+    }
+
     partial void OnShowSpotifyAmbientGlowChanged(bool value)
     {
         if (_suppressSave) return;
@@ -481,6 +538,24 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         _database.SaveSetting(DatabaseService.KeySpotifyRemArtFile, value.FileName);
         FeedbackMessage = $"Spotify Rem companion pose set to {value.Label}.";
         _actionLog.Log("Spotify", $"Spotify Rem pose set to {value.FileName}.");
+        _onSettingsApplied(ModuleId);
+    }
+
+    partial void OnSelectedSpotifyHomeLayoutChanged(SpotifyHomeLayoutOption? value)
+    {
+        if (_suppressSave || value is null) return;
+        _database.SaveSetting(DatabaseService.KeySpotifyHomeLayout, value.Key);
+        FeedbackMessage = $"Spotify Home layout set to {value.Label}.";
+        _actionLog.Log("Spotify", $"Spotify Home layout set to {value.Key}.");
+        _onSettingsApplied(ModuleId);
+    }
+
+    partial void OnSelectedSpotifyHomeCoverQualityChanged(SpotifyHomeCoverQualityOption? value)
+    {
+        if (_suppressSave || value is null) return;
+        _database.SaveSetting(DatabaseService.KeySpotifyHomeCoverQuality, value.DecodeWidth.ToString());
+        FeedbackMessage = $"Spotify Home horizontal cover quality set to {value.Label}.";
+        _actionLog.Log("Spotify", $"Spotify Home horizontal cover quality set to {value.DecodeWidth}px.");
         _onSettingsApplied(ModuleId);
     }
 
@@ -579,6 +654,7 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         _database.SaveSetting(DatabaseService.KeySpotifyClientId, SpotifyClientId.Trim());
         _database.SaveSetting(DatabaseService.KeySpotifySoloistApiKey, SpotifySoloistApiKey.Trim());
         _database.SaveSetting(DatabaseService.KeySpotifyLastFmApiKey, SpotifyLastFmApiKey.Trim());
+        _spotifyWebApi.InvalidateCachedCredentials();
 
         if (_soloist.HasApiKey && !_soloist.IsDaemonRunning)
         {
@@ -597,6 +673,7 @@ public sealed partial class ModuleSettingsViewModel : ObservableObject, IDisposa
         _database.SaveSetting(DatabaseService.KeySpotifyClientId, SpotifyClientId.Trim());
         _database.SaveSetting(DatabaseService.KeySpotifySoloistApiKey, SpotifySoloistApiKey.Trim());
         _database.SaveSetting(DatabaseService.KeySpotifyLastFmApiKey, SpotifyLastFmApiKey.Trim());
+        _spotifyWebApi.InvalidateCachedCredentials();
 
         _oauthCts?.Cancel();
         _oauthCts?.Dispose();

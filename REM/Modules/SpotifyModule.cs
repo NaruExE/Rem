@@ -79,7 +79,8 @@ public sealed class SpotifyModule : IAppModule, IHeaderConfigurableModule, IClos
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_activeView is null || _activeViewModel is null)
+        var isReopen = _activeView is not null && _activeViewModel is not null;
+        if (!isReopen)
         {
             _activeViewModel = new SpotifyViewModel(
                 this,
@@ -105,7 +106,12 @@ public sealed class SpotifyModule : IAppModule, IHeaderConfigurableModule, IClos
 
         SetState(ModuleState.RunningUI);
         UpdateStatusSummary();
-        return _activeView;
+        if (isReopen)
+        {
+            _activeViewModel?.OnViewReturned();
+        }
+
+        return _activeView!;
     }
 
     public void RunHeadless()
